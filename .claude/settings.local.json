@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"/c/Users/PC/Desktop/AI Visibility Backend/backend\" && npm install --silent 2>&1 | tail -5)",
+      "Bash(cd \"/c/Users/PC/Desktop/AI Visibility Backend/backend\" && npx tsc --noEmit 2>&1)",
+      "Bash(cd \"/c/Users/PC/Desktop/AI Visibility Backend/frontend\" && npm install --silent 2>&1 | tail -5 && npx tsc --noEmit 2>&1)",
+      "Bash(cd \"/c/Users/PC/Desktop/AI Visibility Backend/frontend\" && npx tsc --noEmit 2>&1)"
+    ]
+  }
+}
