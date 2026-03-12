@@ -1,8 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
-const PROTECTED_PATHS = ['/dashboard', '/audit', '/settings'];
-
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
@@ -25,19 +23,8 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // getSession reads JWT from cookie locally — no network call, works in edge runtime
-  const { data: { session } } = await supabase.auth.getSession();
-
-  const isProtected = PROTECTED_PATHS.some((p) =>
-    request.nextUrl.pathname.startsWith(p)
-  );
-
-  if (!session && isProtected) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    url.searchParams.set('redirect', request.nextUrl.pathname);
-    return NextResponse.redirect(url);
-  }
+  // Refresh session cookie — required by @supabase/ssr
+  await supabase.auth.getSession();
 
   return supabaseResponse;
 }
