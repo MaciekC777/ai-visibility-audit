@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 
-export default function SignupPage() {
+function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const plan = searchParams.get('plan');
@@ -38,18 +38,55 @@ export default function SignupPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <div className="w-full max-w-sm text-center">
-          <div className="text-5xl mb-4">📧</div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Check your email</h1>
-          <p className="text-gray-500 text-sm">
-            We sent a confirmation link to <strong>{email}</strong>. Click it to activate your account.
-          </p>
-        </div>
+      <div className="text-center">
+        <div className="text-5xl mb-4">📧</div>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Check your email</h1>
+        <p className="text-gray-500 text-sm">
+          We sent a confirmation link to <strong>{email}</strong>. Click it to activate your account.
+        </p>
       </div>
     );
   }
 
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-8">
+      <h1 className="text-2xl font-bold text-gray-900 mb-2">Create your account</h1>
+      <p className="text-gray-500 text-sm mb-6">
+        {plan ? `Starting with the ${plan} plan` : 'Start free, upgrade anytime'}
+      </p>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <Input
+          label="Email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+        <Input
+          label="Password"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          hint="Minimum 8 characters"
+          minLength={8}
+          required
+        />
+        {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+        <Button type="submit" className="w-full" loading={loading}>
+          Create account
+        </Button>
+      </form>
+
+      <p className="mt-6 text-center text-sm text-gray-500">
+        Already have an account?{' '}
+        <Link href="/login" className="text-primary-600 font-medium hover:underline">Sign in</Link>
+      </p>
+    </div>
+  );
+}
+
+export default function SignupPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm">
@@ -61,41 +98,9 @@ export default function SignupPage() {
           </div>
           <span className="font-display font-bold text-gray-900">AI Visibility</span>
         </Link>
-
-        <div className="bg-white rounded-2xl border border-gray-200 p-8">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Create your account</h1>
-          <p className="text-gray-500 text-sm mb-6">
-            {plan ? `Starting with the ${plan} plan` : 'Start free, upgrade anytime'}
-          </p>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <Input
-              label="Email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-            <Input
-              label="Password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              hint="Minimum 8 characters"
-              minLength={8}
-              required
-            />
-            {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
-            <Button type="submit" className="w-full" loading={loading}>
-              Create account
-            </Button>
-          </form>
-
-          <p className="mt-6 text-center text-sm text-gray-500">
-            Already have an account?{' '}
-            <Link href="/login" className="text-primary-600 font-medium hover:underline">Sign in</Link>
-          </p>
-        </div>
+        <Suspense fallback={<div className="h-96 bg-white rounded-2xl border border-gray-200 animate-pulse" />}>
+          <SignupForm />
+        </Suspense>
       </div>
     </div>
   );
