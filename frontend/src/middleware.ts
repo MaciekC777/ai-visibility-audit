@@ -25,15 +25,14 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getSession reads JWT from cookie locally — no network call, works in edge runtime
+  const { data: { session } } = await supabase.auth.getSession();
 
   const isProtected = PROTECTED_PATHS.some((p) =>
     request.nextUrl.pathname.startsWith(p)
   );
 
-  if (!user && isProtected) {
+  if (!session && isProtected) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set('redirect', request.nextUrl.pathname);
