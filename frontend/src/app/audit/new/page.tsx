@@ -1,13 +1,7 @@
-import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase-server';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { AuditForm } from '@/components/audit/AuditForm';
 
-export default async function NewAuditPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
-
+export default function NewAuditPage() {
   return (
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar />
