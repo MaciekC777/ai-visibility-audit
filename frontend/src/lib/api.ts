@@ -32,6 +32,11 @@ async function apiFetch<T>(
 export const api = {
   createAudit: (data: {
     domain: string;
+    businessMode?: 'saas' | 'local';
+    region?: 'global' | 'germany' | 'france' | 'spain' | 'poland' | 'portugal';
+    language?: 'en' | 'de' | 'fr' | 'es' | 'pl' | 'pt';
+    keywords?: string[];
+    // Legacy
     targetKeywords?: string[];
     targetMarket?: string;
     targetLanguage?: string;

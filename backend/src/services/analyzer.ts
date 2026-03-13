@@ -1,134 +1,395 @@
-import { ModelResponse, VisibilityAnalysis, SentimentResult, Competitor } from '../types';
-import { POSITION_SCORE_LATER, POSITION_SCORE_NONE, POSITION_SCORES } from '../config/constants';
-import { PromptItem } from '../types';
+import OpenAI from 'openai';
+import {
+  ModelResponse,
+  VisibilityAnalysis,
+  SentimentResult,
+  Competitor,
+  PromptItem,
+  MentionResult,
+  PromptMentionResult,
+  SourceAnalysis,
+  BrandProfile,
+} from '../types';
+import { env } from '../config/env';
+import { logger } from '../utils/logger';
 
-function mentionPosition(text: string, brandName: string): number | null {
-  const lower = text.toLowerCase();
-  const brand = brandName.toLowerCase();
-  if (!lower.includes(brand)) return null;
+const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
-  // Find sentence/list index where brand first appears
-  const sentences = lower.split(/[\n.!?]/);
-  for (let i = 0; i < sentences.length; i++) {
-    if (sentences[i].includes(brand)) {
-      // Estimate position (1-based) within listed items
-      const listsBefore = lower.slice(0, lower.indexOf(brand)).split(/\d+\.|[-*•]/).length;
-      return Math.max(1, listsBefore);
+// ─── LLM-based visibility detection ──────────────────────────────────────────
+
+async function detectMention(
+  response: ModelResponse,
+  brandName: string,
+  category: string,
+  city?: string
+): Promise<MentionResult> {
+  // Quick pre-filter: if brand not mentioned, skip LLM call
+  if (!response.response || response.refused || response.explicit_unknown) {
+    return {
+      brand_mentioned: false,
+      mention_type: 'not_found',
+      position_in_list: null,
+      total_items_in_list: null,
+      competitors_mentioned: [],
+      recommendation_strength: 'absent',
+      context_snippet: null,
+      sources_referenced: response.sources_cited,
+    };
+  }
+
+  const systemPrompt = `You are a brand mention detection engine.
+Return ONLY valid JSON. No explanation, no markdown.`;
+
+  const userPrompt = `Brand to detect: ${brandName}
+Known aliases: ${brandName.toLowerCase()}, ${brandName.replace(/\s+/g, '')}
+Category: ${category}${city ? `\nLocation: ${city}` : ''}
+
+AI Response:
+"${response.response.slice(0, 2000)}"
+
+Return JSON:
+{
+  "brand_mentioned": true/false,
+  "mention_type": "recommended" | "listed" | "briefly_mentioned" | "not_found",
+  "position_in_list": number | null,
+  "total_items_in_list": number | null,
+  "competitors_mentioned": ["string"],
+  "recommendation_strength": "primary" | "one_of_many" | "mentioned_not_recommended" | "absent",
+  "context_snippet": "string | null",
+  "sources_referenced": ["string"]
+}`;
+
+  try {
+    const res = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      max_tokens: 400,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+    });
+    const raw = res.choices[0]?.message?.content ?? '{}';
+    const parsed = JSON.parse(raw) as MentionResult;
+    return {
+      ...parsed,
+      sources_referenced: [
+        ...(parsed.sources_referenced ?? []),
+        ...response.sources_cited,
+      ].slice(0, 10),
+    };
+  } catch (e) {
+    logger.error('Mention detection LLM failed', { error: e });
+    // Fallback to string matching
+    const brandLower = brandName.toLowerCase();
+    const respLower = response.response.toLowerCase();
+    const mentioned = respLower.includes(brandLower);
+    return {
+      brand_mentioned: mentioned,
+      mention_type: mentioned ? 'briefly_mentioned' : 'not_found',
+      position_in_list: null,
+      total_items_in_list: null,
+      competitors_mentioned: [],
+      recommendation_strength: mentioned ? 'mentioned_not_recommended' : 'absent',
+      context_snippet: null,
+      sources_referenced: response.sources_cited,
+    };
+  }
+}
+
+// ─── Batch visibility analysis ────────────────────────────────────────────────
+
+export async function analyzeVisibility(
+  responses: ModelResponse[],
+  profile: BrandProfile
+): Promise<VisibilityAnalysis> {
+  const brandName = profile.mode === 'saas' ? profile.brand.name : profile.brand.name;
+  const category = profile.brand.category;
+  const city = profile.mode === 'local' ? profile.location.city : undefined;
+
+  // Only analyze A, D, K category prompts for visibility scoring
+  const visibilityCategories = new Set(['A_discovery', 'D_recommendation', 'K_keyword']);
+  const visibilityResponses = responses.filter(r =>
+    visibilityCategories.has(r.promptCategory) && !r.error
+  );
+
+  // For sentiment bonus, analyze all responses
+  const allValidResponses = responses.filter(r => !r.error);
+
+  // Run mention detection in batches (to save costs)
+  const promptMentions: PromptMentionResult[] = [];
+
+  // Process in batches of 5 parallel calls
+  const BATCH_SIZE = 5;
+  for (let i = 0; i < visibilityResponses.length; i += BATCH_SIZE) {
+    const batch = visibilityResponses.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(
+      batch.map(r => detectMention(r, brandName, category, city))
+    );
+    for (let j = 0; j < batch.length; j++) {
+      promptMentions.push({
+        ...batchResults[j],
+        model: batch[j].model,
+        promptId: batch[j].promptId,
+      });
     }
   }
-  return 1;
-}
 
-function positionToScore(pos: number | null): number {
-  if (pos === null) return POSITION_SCORE_NONE;
-  return POSITION_SCORES[pos] ?? POSITION_SCORE_LATER;
-}
+  // Calculate metrics
+  const mentionedResults = promptMentions.filter(r => r.brand_mentioned);
+  const mentionRate = visibilityResponses.length > 0
+    ? mentionedResults.length / visibilityResponses.length
+    : 0;
 
-export function analyzeVisibility(
-  responses: ModelResponse[],
-  brandName: string,
-  prompts: PromptItem[]
-): VisibilityAnalysis {
-  const models = [...new Set(responses.map((r) => r.model))];
+  // Position score: normalized (total_items - position + 1) / total_items
+  const positionScores: number[] = [];
+  for (const r of promptMentions) {
+    if (r.brand_mentioned && r.position_in_list !== null && r.total_items_in_list !== null && r.total_items_in_list > 0) {
+      positionScores.push((r.total_items_in_list - r.position_in_list + 1) / r.total_items_in_list);
+    } else if (!r.brand_mentioned) {
+      positionScores.push(0);
+    }
+  }
+  const positionScore = positionScores.length > 0
+    ? positionScores.reduce((a, b) => a + b, 0) / positionScores.length
+    : 0;
+
+  // Model coverage
+  const models = [...new Set(responses.map(r => r.model))];
+  const modelsWithMentions = new Set(mentionedResults.map(r => r.model));
+  const modelCoverage = models.length > 0 ? modelsWithMentions.size / models.length : 0;
+
+  // Sentiment bonus (computed from sentiments - placeholder, will be filled later)
+  const sentimentBonus = 0.5; // default neutral; will be updated after sentiment analysis
+
+  // mentionsByModel and mentionsByCategory
   const mentionsByModel: Record<string, number> = {};
   const mentionsByCategory: Record<string, number> = {};
-  const positionsByPrompt: Record<string, number | null> = {};
 
+  for (const r of mentionedResults) {
+    mentionsByModel[r.model] = (mentionsByModel[r.model] ?? 0) + 1;
+    const resp = visibilityResponses.find(vr => vr.promptId === r.promptId && vr.model === r.model);
+    if (resp) {
+      mentionsByCategory[resp.promptCategory] = (mentionsByCategory[resp.promptCategory] ?? 0) + 1;
+    }
+  }
+
+  return {
+    mentionRate,
+    positionScore,
+    modelCoverage,
+    sentimentBonus,
+    mentionsByModel,
+    mentionsByCategory,
+    promptMentions,
+  };
+}
+
+// ─── LLM-based Sentiment Analysis ────────────────────────────────────────────
+
+export async function analyzeSentiment(
+  responses: ModelResponse[],
+  brandName: string
+): Promise<SentimentResult[]> {
+  // Filter E (evaluation) responses + any with brand mentioned
+  const evalResponses = responses.filter(r =>
+    (r.promptCategory === 'E_evaluation' || r.promptCategory === 'C_comparison') &&
+    !r.error && r.response
+  );
+
+  if (evalResponses.length === 0) {
+    return responses.map(r => ({
+      promptId: r.promptId,
+      model: r.model,
+      overall_sentiment: 'neutral' as const,
+      tone: 'unknown' as const,
+      specific_praise: [],
+      specific_criticism: [],
+      fabricated_opinions: false,
+      fabricated_opinions_detail: null,
+    }));
+  }
+
+  const systemPrompt = `You are a sentiment analysis engine for brand perception.
+Return ONLY a valid JSON array. No markdown, no explanation.`;
+
+  const userPrompt = `Brand: ${brandName}
+
+Analyze each response and return a JSON array:
+[{
+  "promptId": "string",
+  "model": "string",
+  "overall_sentiment": "positive" | "neutral" | "negative" | "mixed",
+  "tone": "enthusiastic" | "balanced" | "cautious" | "dismissive" | "unknown",
+  "specific_praise": ["string"],
+  "specific_criticism": ["string"],
+  "fabricated_opinions": true/false,
+  "fabricated_opinions_detail": "string | null"
+}]
+
+Responses to analyze:
+${evalResponses.map(r => `[promptId:${r.promptId}][model:${r.model}]: ${r.response.slice(0, 500)}`).join('\n\n')}
+
+Analyze regardless of response language. Return in English.`;
+
+  try {
+    const res = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      max_tokens: 1500,
+      temperature: 0,
+    });
+    const raw = res.choices[0]?.message?.content ?? '[]';
+    // Strip markdown if present
+    const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const parsed = JSON.parse(cleaned) as SentimentResult[];
+
+    // For responses not in eval set, add neutral defaults
+    const evalIds = new Set(evalResponses.map(r => `${r.promptId}_${r.model}`));
+    const allResults: SentimentResult[] = [...parsed];
+    for (const r of responses) {
+      const key = `${r.promptId}_${r.model}`;
+      if (!evalIds.has(key)) {
+        allResults.push({
+          promptId: r.promptId,
+          model: r.model,
+          overall_sentiment: 'neutral',
+          tone: 'unknown',
+          specific_praise: [],
+          specific_criticism: [],
+          fabricated_opinions: false,
+          fabricated_opinions_detail: null,
+        });
+      }
+    }
+    return allResults;
+  } catch (e) {
+    logger.error('Sentiment analysis failed', { error: e });
+    return responses.map(r => ({
+      promptId: r.promptId,
+      model: r.model,
+      overall_sentiment: 'neutral' as const,
+      tone: 'unknown' as const,
+      specific_praise: [],
+      specific_criticism: [],
+      fabricated_opinions: false,
+      fabricated_opinions_detail: null,
+    }));
+  }
+}
+
+// ─── Competitor extraction ────────────────────────────────────────────────────
+
+export function extractCompetitors(
+  responses: ModelResponse[],
+  brandName: string,
+  promptMentions: PromptMentionResult[]
+): Competitor[] {
+  const brandLower = brandName.toLowerCase();
+  const allCompetitorMentions: string[] = [];
+
+  // Collect from LLM-detected competitors
+  for (const pm of promptMentions) {
+    allCompetitorMentions.push(...pm.competitors_mentioned);
+  }
+
+  // Also extract from text with regex (capitalized phrases)
   for (const resp of responses) {
-    const pos = mentionPosition(resp.response, brandName);
-    const promptKey = `${resp.promptId}_${resp.model}`;
-    positionsByPrompt[promptKey] = pos;
-
-    if (pos !== null) {
-      mentionsByModel[resp.model] = (mentionsByModel[resp.model] ?? 0) + 1;
-      const prompt = prompts.find((p) => p.id === resp.promptId);
-      if (prompt) {
-        mentionsByCategory[prompt.category] = (mentionsByCategory[prompt.category] ?? 0) + 1;
+    const matches = resp.response.match(/\b[A-Z][a-zA-Z]+(?:\s[A-Z][a-zA-Z]+)?\b/g) ?? [];
+    for (const match of matches) {
+      const lower = match.toLowerCase();
+      if (lower !== brandLower && match.length > 2 && !STOPWORDS.has(lower)) {
+        allCompetitorMentions.push(match);
       }
     }
   }
 
-  const totalResponses = responses.filter((r) => !r.error).length;
-  const mentionRate = totalResponses > 0
-    ? Object.values(mentionsByModel).reduce((a, b) => a + b, 0) / totalResponses
-    : 0;
+  // Count occurrences
+  const counts: Record<string, {
+    total_mentions: number;
+    models: Set<string>;
+    co_mention_count: number;
+    replacement_count: number;
+    positions: number[];
+  }> = {};
 
-  const modelCoverage = models.length > 0
-    ? Object.keys(mentionsByModel).length / models.length
-    : 0;
-
-  const positionScores = Object.values(positionsByPrompt).map(positionToScore);
-  const avgPositionScore = positionScores.length > 0
-    ? positionScores.reduce((a, b) => a + b, 0) / positionScores.length
-    : 0;
-
-  const categories = [...new Set(prompts.map((p) => p.category))];
-  const categoriesWithMentions = categories.filter((c) => (mentionsByCategory[c] ?? 0) > 0);
-  const categoryBreadth = categories.length > 0
-    ? categoriesWithMentions.length / categories.length
-    : 0;
-
-  return {
-    mentionRate,
-    modelCoverage,
-    avgPositionScore,
-    categoryBreadth,
-    mentionsByModel,
-    mentionsByCategory,
-    positionsByPrompt,
-  };
-}
-
-export function analyzeSentiment(
-  responses: ModelResponse[],
-  brandName: string
-): SentimentResult[] {
-  return responses.map((resp) => {
-    const text = resp.response.toLowerCase();
-    const brand = brandName.toLowerCase();
-
-    if (!text.includes(brand)) {
-      return { promptId: resp.promptId, model: resp.model, sentiment: 'neutral' as const, score: 0 };
+  for (const name of allCompetitorMentions) {
+    if (!counts[name]) {
+      counts[name] = { total_mentions: 0, models: new Set(), co_mention_count: 0, replacement_count: 0, positions: [] };
     }
+    counts[name].total_mentions++;
+  }
 
-    const positiveWords = ['great', 'excellent', 'best', 'top', 'leading', 'popular', 'recommended', 'reliable', 'powerful', 'easy'];
-    const negativeWords = ['poor', 'bad', 'worst', 'avoid', 'unreliable', 'expensive', 'limited', 'disappointing'];
+  // Add model attribution and co-mention/replacement data from promptMentions
+  for (const pm of promptMentions) {
+    const resp = responses.find(r => r.promptId === pm.promptId && r.model === pm.model);
+    if (!resp) continue;
 
-    let score = 0;
-    for (const w of positiveWords) if (text.includes(w)) score += 0.15;
-    for (const w of negativeWords) if (text.includes(w)) score -= 0.2;
-    score = Math.max(-1, Math.min(1, score));
-
-    const sentiment = score > 0.1 ? 'positive' : score < -0.1 ? 'negative' : 'neutral';
-    return { promptId: resp.promptId, model: resp.model, sentiment, score };
-  });
-}
-
-export function extractCompetitors(
-  responses: ModelResponse[],
-  brandName: string
-): Competitor[] {
-  const brandLower = brandName.toLowerCase();
-  const counts: Record<string, { count: number; models: Set<string> }> = {};
-
-  for (const resp of responses) {
-    const text = resp.response;
-    // Extract capitalized multi-word phrases (likely brand names)
-    const matches = text.match(/\b[A-Z][a-zA-Z]+(?:\s[A-Z][a-zA-Z]+)?\b/g) ?? [];
-    for (const match of matches) {
-      const lower = match.toLowerCase();
-      if (lower === brandLower || lower.length < 3 || STOPWORDS.has(lower)) continue;
-      if (!counts[match]) counts[match] = { count: 0, models: new Set() };
-      counts[match].count++;
-      counts[match].models.add(resp.model);
+    for (const comp of pm.competitors_mentioned) {
+      if (!counts[comp]) {
+        counts[comp] = { total_mentions: 0, models: new Set(), co_mention_count: 0, replacement_count: 0, positions: [] };
+      }
+      counts[comp].models.add(resp.model);
+      if (pm.brand_mentioned) counts[comp].co_mention_count++;
+      if (!pm.brand_mentioned && pm.recommendation_strength !== 'absent') {
+        counts[comp].replacement_count++;
+      }
     }
   }
 
+  const totalResponses = responses.length || 1;
+
   return Object.entries(counts)
-    .filter(([, v]) => v.count >= 2)
-    .sort(([, a], [, b]) => b.count - a.count)
+    .filter(([, v]) => v.total_mentions >= 2)
+    .sort(([, a], [, b]) => b.total_mentions - a.total_mentions)
     .slice(0, 15)
-    .map(([name, v]) => ({ name, mentionCount: v.count, models: [...v.models] }));
+    .map(([name, v]) => ({
+      name,
+      total_mentions: v.total_mentions,
+      co_mention_rate: v.co_mention_count / totalResponses,
+      replacement_rate: v.replacement_count / totalResponses,
+      avg_position: 0, // TODO: track position per competitor
+      models: [...v.models],
+    }));
+}
+
+// ─── Source analysis ──────────────────────────────────────────────────────────
+
+export function analyzeSourcesCited(
+  responses: ModelResponse[],
+  brandDomain: string
+): SourceAnalysis {
+  const cleanDomain = brandDomain.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+  const allSources = responses.flatMap(r => r.sources_cited ?? []);
+
+  const brandSources = allSources.filter(s => s.includes(cleanDomain));
+  const urlCounts: Record<string, number> = {};
+
+  for (const source of allSources) {
+    try {
+      const hostname = new URL(source).hostname.replace(/^www\./, '');
+      if (!hostname.includes(cleanDomain)) {
+        urlCounts[hostname] = (urlCounts[hostname] ?? 0) + 1;
+      }
+    } catch {}
+  }
+
+  const thirdPartySources = Object.entries(urlCounts)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 10)
+    .map(([url, count]) => ({ url, count }));
+
+  return {
+    brand_site_cited: brandSources.length > 0,
+    brand_site_citation_count: brandSources.length,
+    third_party_sources: thirdPartySources,
+    competitor_sites_cited: [],
+    total_sources: allSources.length,
+  };
 }
 
 const STOPWORDS = new Set([
@@ -137,4 +398,7 @@ const STOPWORDS = new Set([
   'when', 'what', 'how', 'its', 'been', 'has', 'was', 'had', 'not', 'but',
   'all', 'one', 'may', 'use', 'used', 'tool', 'tools', 'software', 'platform',
   'company', 'product', 'service', 'solution', 'option', 'choice', 'way',
+  'best', 'top', 'good', 'great', 'many', 'most', 'help', 'provide',
+  'include', 'offer', 'also', 'well', 'need', 'want', 'like', 'using',
+  'user', 'users', 'business', 'businesses', 'features', 'options',
 ]);

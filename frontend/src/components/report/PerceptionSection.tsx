@@ -7,11 +7,15 @@ interface PerceptionSectionProps {
 }
 
 export function PerceptionSection({ sentiment, perceptionScore }: PerceptionSectionProps) {
-  const results = sentiment?.filter((s) => s.sentiment !== undefined) ?? [];
-  const pos = results.filter((s) => s.sentiment === 'positive').length;
-  const neu = results.filter((s) => s.sentiment === 'neutral').length;
-  const neg = results.filter((s) => s.sentiment === 'negative').length;
+  const results = sentiment ?? [];
+  const pos = results.filter((s) => s.overall_sentiment === 'positive').length;
+  const neu = results.filter((s) => s.overall_sentiment === 'neutral' || s.overall_sentiment === 'mixed').length;
+  const neg = results.filter((s) => s.overall_sentiment === 'negative').length;
   const total = results.length || 1;
+
+  // Collect unique praise/criticism
+  const allPraise = [...new Set(results.flatMap(s => s.specific_praise).filter(Boolean))].slice(0, 5);
+  const allCriticism = [...new Set(results.flatMap(s => s.specific_criticism).filter(Boolean))].slice(0, 5);
 
   return (
     <section id="perception" className="scroll-mt-24">
@@ -21,7 +25,7 @@ export function PerceptionSection({ sentiment, perceptionScore }: PerceptionSect
         <Card>
           <CardContent>
             <div className="text-center mb-4">
-              <div className={`text-5xl font-bold ${perceptionScore !== null && perceptionScore !== undefined ? (perceptionScore >= 70 ? 'text-green-600' : perceptionScore >= 40 ? 'text-yellow-600' : 'text-red-600') : 'text-gray-300'}`}>
+              <div className={`text-5xl font-bold ${perceptionScore == null ? 'text-gray-300' : perceptionScore >= 70 ? 'text-green-600' : perceptionScore >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
                 {perceptionScore ?? '—'}
               </div>
               <div className="text-sm text-gray-500 mt-1">Perception Score</div>
@@ -44,22 +48,33 @@ export function PerceptionSection({ sentiment, perceptionScore }: PerceptionSect
 
         <Card>
           <CardContent>
-            <h3 className="font-medium text-gray-900 mb-4">By model</h3>
-            {[...new Set(results.map((r) => r.model))].map((model) => {
-              const modelResults = results.filter((r) => r.model === model);
-              const modelPos = modelResults.filter((r) => r.sentiment === 'positive').length;
-              const pct = Math.round((modelPos / modelResults.length) * 100);
-              return (
-                <div key={model} className="flex items-center gap-3 mb-3">
-                  <span className="text-sm capitalize text-gray-700 w-24">{model}</span>
-                  <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-green-400 rounded-full" style={{ width: `${pct}%` }} />
-                  </div>
-                  <span className="text-xs text-gray-500 w-10 text-right">{pct}%</span>
-                </div>
-              );
-            })}
-            {results.length === 0 && <p className="text-sm text-gray-400">No sentiment data available.</p>}
+            {allPraise.length > 0 && (
+              <div className="mb-4">
+                <h3 className="text-xs font-semibold text-gray-400 uppercase mb-2">What AI praises</h3>
+                <ul className="space-y-1">
+                  {allPraise.map((p, i) => (
+                    <li key={i} className="text-sm text-green-700 flex items-start gap-1.5">
+                      <span className="text-green-500 mt-0.5">✓</span> {p}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {allCriticism.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold text-gray-400 uppercase mb-2">What AI criticizes</h3>
+                <ul className="space-y-1">
+                  {allCriticism.map((c, i) => (
+                    <li key={i} className="text-sm text-red-700 flex items-start gap-1.5">
+                      <span className="text-red-500 mt-0.5">✗</span> {c}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {allPraise.length === 0 && allCriticism.length === 0 && (
+              <p className="text-sm text-gray-400">No specific praise or criticism detected.</p>
+            )}
           </CardContent>
         </Card>
       </div>

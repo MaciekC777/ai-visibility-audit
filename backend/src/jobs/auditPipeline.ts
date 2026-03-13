@@ -4,22 +4,32 @@ import { scrapeBrandProfile, analyzeWebsiteReadiness } from '../services/scraper
 import { checkThirdPartyPresence } from '../services/thirdPartyChecker';
 import { generatePrompts } from '../services/promptGenerator';
 import { queryAllModels } from '../services/aiQueryService';
-import { analyzeVisibility, analyzeSentiment, extractCompetitors } from '../services/analyzer';
+import {
+  analyzeVisibility,
+  analyzeSentiment,
+  extractCompetitors,
+  analyzeSourcesCited,
+} from '../services/analyzer';
 import { detectHallucinations } from '../services/hallucinationDetector';
 import { calculateAllScores } from '../services/scorer';
 import { generateRecommendations } from '../services/recommendationGenerator';
 import { PLAN_LIMITS } from '../config/constants';
-import { PlanType, AuditStatus } from '../types';
-import { SCRAPE_PATHS } from '../config/constants';
+import { AuditInput, AuditStatus, VisibilityAnalysis } from '../types';
 
-async function setStatus(auditId: string, status: AuditStatus, extra?: Record<string, unknown>) {
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+async function setStatus(
+  auditId: string,
+  status: AuditStatus,
+  extra?: Record<string, unknown>
+): Promise<void> {
   await supabaseAdmin
     .from('audits')
     .update({ status, ...extra })
     .eq('id', auditId);
 }
 
-async function saveResult(auditId: string, resultType: string, data: unknown) {
+async function saveResult(auditId: string, resultType: string, data: unknown): Promise<void> {
   await supabaseAdmin.from('audit_results').insert({
     audit_id: auditId,
     result_type: resultType,
@@ -27,54 +37,45 @@ async function saveResult(auditId: string, resultType: string, data: unknown) {
   });
 }
 
-export async function runAuditPipeline(
-  auditId: string,
-  domain: string,
-  plan: PlanType,
-  targetLanguage = 'en'
-) {
-  logger.info(`Starting audit pipeline`, { auditId, domain });
+// ─── Pipeline ─────────────────────────────────────────────────────────────────
+
+export async function runAuditPipeline(input: AuditInput): Promise<void> {
+  const { auditId, domain, plan, businessMode, region, language, keywords = [] } = input;
+
+  logger.info('Starting audit pipeline', { auditId, domain, businessMode, region, language });
 
   try {
-    // Step 1: Scrape
+    // ── STEP 1: Scrape ── (0-15%)
     await setStatus(auditId, 'scraping');
-    const profile = await scrapeBrandProfile(domain);
+    const profile = await scrapeBrandProfile(domain, businessMode);
     await saveResult(auditId, 'brand_profile', profile);
-
-    // Also analyze website readiness during scrape
-    const pages: Record<string, string> = {};
-    for (const path of SCRAPE_PATHS) {
-      try {
-        const res = await fetch(
-          `${domain.startsWith('http') ? domain : `https://${domain}`}${path}`,
-          { signal: AbortSignal.timeout(10_000) }
-        );
-        if (res.ok) pages[path] = await res.text();
-      } catch {}
-    }
-    const websiteReadiness = await analyzeWebsiteReadiness(domain, pages);
-    await saveResult(auditId, 'website_readiness', websiteReadiness);
 
     // Update brand_name in audit row
     await supabaseAdmin
       .from('audits')
-      .update({ brand_name: profile.brandName })
+      .update({ brand_name: profile.brand.name })
       .eq('id', auditId);
 
-    // Step 2: Third-party check
+    // ── STEP 2: Website Readiness ──
+    const websiteReadiness = await analyzeWebsiteReadiness(domain, businessMode, profile);
+    await saveResult(auditId, 'website_readiness', websiteReadiness);
+
+    // ── STEP 3: Third-party check ── (15-25%)
     await setStatus(auditId, 'third_party_check');
-    const thirdParty = await checkThirdPartyPresence(domain);
+    const thirdParty = await checkThirdPartyPresence(domain, businessMode, plan);
     await saveResult(auditId, 'third_party', thirdParty);
 
-    // Step 3: Generate prompts
+    // ── STEP 4: Generate prompts ── (25-30%)
     await setStatus(auditId, 'generating_prompts');
-    const prompts = generatePrompts(profile, plan, targetLanguage);
+    const prompts = await generatePrompts(profile, plan, language, region, keywords);
     await supabaseAdmin
       .from('audits')
       .update({ total_prompts: prompts.length })
       .eq('id', auditId);
 
-    // Step 4: Query models
+    logger.info('Generated prompts', { auditId, count: prompts.length });
+
+    // ── STEP 5: Query AI models with web search ── (30-65%)
     await setStatus(auditId, 'querying_models');
     const models = PLAN_LIMITS[plan].models;
     const responses = await queryAllModels(prompts, models);
@@ -84,25 +85,34 @@ export async function runAuditPipeline(
       .update({ models_queried: models })
       .eq('id', auditId);
 
-    // Step 5: Analyze visibility
+    logger.info('Queried models', { auditId, responseCount: responses.length });
+
+    // ── STEP 6: Analyze ── (65-78%)
     await setStatus(auditId, 'analyzing');
-    const visibilityAnalysis = analyzeVisibility(responses, profile.brandName, prompts);
+
+    // Visibility analysis (LLM-based mention detection)
+    const visibilityAnalysis = await analyzeVisibility(responses, profile);
     await saveResult(auditId, 'visibility_analysis', visibilityAnalysis);
 
-    // Step 6: Detect hallucinations
+    // Sentiment analysis
+    const sentiments = await analyzeSentiment(responses, profile.brand.name);
+    await saveResult(auditId, 'sentiment', sentiments);
+
+    // Competitor mapping
+    const competitors = extractCompetitors(responses, profile.brand.name, visibilityAnalysis.promptMentions);
+    await saveResult(auditId, 'competitors', competitors);
+
+    // Source analysis
+    const sourceAnalysis = analyzeSourcesCited(responses, domain);
+    await saveResult(auditId, 'source_analysis', sourceAnalysis);
+
+    // Hallucination detection (2-step)
     const hallucinations = await detectHallucinations(responses, profile);
     await saveResult(auditId, 'hallucinations', hallucinations);
 
-    // Step 7: Analyze sentiment
-    const sentiments = analyzeSentiment(responses, profile.brandName);
-    await saveResult(auditId, 'sentiment', sentiments);
-
-    // Step 8: Extract competitors
-    const competitors = extractCompetitors(responses, profile.brandName);
-    await saveResult(auditId, 'competitors', competitors);
-
-    // Step 9: Score + Recommendations
+    // ── STEP 7: Score + Recommendations ── (78-98%)
     await setStatus(auditId, 'scoring');
+
     const brandTotalMentions = Object.values(visibilityAnalysis.mentionsByModel).reduce(
       (a, b) => a + b,
       0
@@ -119,10 +129,14 @@ export async function runAuditPipeline(
       profile,
       scores,
       websiteReadiness,
-      thirdParty
+      thirdParty,
+      hallucinations,
+      competitors,
+      sourceAnalysis
     );
     await saveResult(auditId, 'recommendations', recommendations);
 
+    // ── Complete ──
     await setStatus(auditId, 'completed', {
       visibility_score: scores.visibilityScore,
       accuracy_score: scores.accuracyScore,
@@ -131,9 +145,9 @@ export async function runAuditPipeline(
       completed_at: new Date().toISOString(),
     });
 
-    logger.info(`Audit pipeline completed`, { auditId, scores });
+    logger.info('Audit pipeline completed', { auditId, scores });
   } catch (err) {
-    logger.error(`Audit pipeline failed`, { auditId, error: err });
+    logger.error('Audit pipeline failed', { auditId, error: err });
     await supabaseAdmin
       .from('audits')
       .update({

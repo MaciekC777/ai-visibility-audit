@@ -10,6 +10,9 @@ export type AuditStatus =
   | 'failed';
 
 export type PlanType = 'free' | 'starter' | 'pro' | 'agency';
+export type BusinessMode = 'saas' | 'local';
+export type Region = 'global' | 'germany' | 'france' | 'spain' | 'poland' | 'portugal';
+export type Language = 'en' | 'de' | 'fr' | 'es' | 'pl' | 'pt';
 
 export interface Audit {
   id: string;
@@ -17,7 +20,7 @@ export interface Audit {
   domain: string;
   brand_name: string | null;
   target_keywords: string[] | null;
-  target_market: string;
+  target_market: string; // stores region
   target_language: string;
   status: AuditStatus;
   error_message: string | null;
@@ -40,92 +43,212 @@ export interface AuditResult {
   created_at: string;
 }
 
-export interface BrandProfile {
-  domain: string;
-  brandName: string;
-  description: string;
-  usps: string[];
-  pricingTiers: string[];
-  category: string;
-  keywords: string[];
+// ─── Brand Profiles ───────────────────────────────────────────────────────────
+
+export interface BrandProfileSaaS {
+  mode: 'saas';
+  brand: {
+    name: string;
+    domain: string;
+    description: string;
+    tagline: string;
+    category: string;
+    subcategories: string[];
+    founded_year?: string;
+    headquarters?: string;
+  };
+  pricing: {
+    currency: string;
+    model: string;
+    plans: Array<{ name: string; price: string; billing_period: string; key_limits: string[] }>;
+    free_trial: boolean;
+    enterprise: boolean;
+  };
+  features: {
+    core: string[];
+    differentiators: string[];
+    integrations: string[];
+    platforms: string[];
+  };
+  website_meta: {
+    has_schema_org: boolean;
+    schema_types_found: string[];
+    has_llms_txt: boolean;
+    has_sitemap: boolean;
+    has_robots_txt: boolean;
+    ai_bots_allowed: 'allowed' | 'partial' | 'blocked' | 'unknown';
+    ssl: boolean;
+    has_faq: boolean;
+    has_pricing_page: boolean;
+  };
+  verifiable_facts: VerifiableFact[];
   scrapedAt: string;
 }
+
+export interface BrandProfileLocal {
+  mode: 'local';
+  brand: {
+    name: string;
+    domain: string;
+    description: string;
+    category: string;
+    subcategories: string[];
+  };
+  location: {
+    address: string;
+    city: string;
+    region: string;
+    country: string;
+    postal_code: string;
+    coordinates?: { lat: number; lng: number };
+  };
+  contact: {
+    phone: string;
+    email: string;
+    opening_hours: Record<string, string>;
+  };
+  services: {
+    primary: string[];
+    secondary: string[];
+    specialties: string[];
+  };
+  online_presence: {
+    google_business?: string;
+    google_rating?: number;
+    google_reviews_count?: number;
+  };
+  website_meta: {
+    has_schema_org: boolean;
+    has_local_business_schema: boolean;
+    nap_consistent: boolean;
+    ssl: boolean;
+    has_faq: boolean;
+  };
+  verifiable_facts: VerifiableFact[];
+  scrapedAt: string;
+}
+
+export type BrandProfile = BrandProfileSaaS | BrandProfileLocal;
+
+export interface VerifiableFact {
+  id: string;
+  category: string;
+  statement: string;
+  source: string;
+}
+
+// ─── Model Responses ──────────────────────────────────────────────────────────
 
 export interface ModelResponse {
   model: string;
   promptId: string;
+  promptText: string;
+  promptCategory: string;
   response: string;
-  latencyMs: number;
+  sources_cited: string[];
+  timestamp: string;
+  tokens_in: number;
+  tokens_out: number;
+  latency_ms: number;
+  search_enabled: boolean;
   error?: string;
+  refused?: boolean;
 }
 
-export interface Hallucination {
-  promptId: string;
-  model: string;
-  claim: string;
-  verdict: 'confirmed_false' | 'unverifiable' | 'confirmed_true';
+// ─── Analysis ─────────────────────────────────────────────────────────────────
+
+export interface VerifiedClaim {
+  claim_text: string;
+  claim_type: string;
+  verdict: 'correct' | 'incorrect' | 'partially_correct' | 'unverifiable' | 'outdated';
+  severity: 'high' | 'medium' | 'low';
   explanation: string;
+  correction: string;
+  model: string;
+  promptId: string;
 }
 
 export interface SentimentResult {
   promptId: string;
   model: string;
-  sentiment: 'positive' | 'neutral' | 'negative';
-  score: number;
+  overall_sentiment: 'positive' | 'neutral' | 'negative' | 'mixed';
+  tone: string;
+  specific_praise: string[];
+  specific_criticism: string[];
+  fabricated_opinions: boolean;
+  fabricated_opinions_detail: string | null;
 }
 
 export interface Competitor {
   name: string;
-  mentionCount: number;
+  total_mentions: number;
+  co_mention_rate: number;
+  replacement_rate: number;
+  avg_position: number;
   models: string[];
 }
 
 export interface Recommendation {
   priority: 'critical' | 'high' | 'medium' | 'low';
-  category: string;
+  effort: 'quick_win' | 'moderate' | 'significant';
   title: string;
   description: string;
-  effort: 'low' | 'medium' | 'high';
-  impact: 'low' | 'medium' | 'high';
+  based_on: string;
+  category: 'accuracy' | 'visibility' | 'website' | 'presence';
+}
+
+export interface WebsiteReadinessCheck {
+  check: string;
+  status: 'pass' | 'fail' | 'partial';
+  importance: 'critical' | 'high' | 'medium' | 'low';
+  detail?: string;
+  recommendation?: string;
 }
 
 export interface WebsiteReadiness {
-  hasStructuredData: boolean;
-  hasAboutPage: boolean;
-  hasPricingPage: boolean;
-  hasBlogOrResources: boolean;
-  hasPressMentions: boolean;
-  metaTitleOptimized: boolean;
-  metaDescriptionOptimized: boolean;
+  mode: BusinessMode;
+  checks: WebsiteReadinessCheck[];
   score: number;
 }
 
 export interface ThirdPartyPresence {
   platform: string;
-  url: string;
-  present: boolean;
-  statusCode?: number;
+  status: 'present' | 'missing';
+  url: string | null;
+  rating?: number | null;
+  reviews_count?: number | null;
+  recommendation: string;
 }
 
 export interface VisibilityAnalysis {
   mentionRate: number;
+  positionScore: number;
   modelCoverage: number;
-  avgPositionScore: number;
-  categoryBreadth: number;
+  sentimentBonus: number;
   mentionsByModel: Record<string, number>;
   mentionsByCategory: Record<string, number>;
-  positionsByPrompt: Record<string, number | null>;
 }
+
+export interface SourceAnalysis {
+  brand_site_cited: boolean;
+  brand_site_citation_count: number;
+  third_party_sources: Array<{ url: string; count: number }>;
+  competitor_sites_cited: string[];
+  total_sources: number;
+}
+
+// ─── Full Report ──────────────────────────────────────────────────────────────
 
 export interface AuditReport {
   audit: Audit;
   brandProfile?: BrandProfile;
   promptResults?: ModelResponse[];
-  hallucinations?: Hallucination[];
+  hallucinations?: VerifiedClaim[];
   competitors?: Competitor[];
   sentiment?: SentimentResult[];
   recommendations?: Recommendation[];
   websiteReadiness?: WebsiteReadiness;
   thirdParty?: ThirdPartyPresence[];
   visibilityAnalysis?: VisibilityAnalysis;
+  sourceAnalysis?: SourceAnalysis;
 }

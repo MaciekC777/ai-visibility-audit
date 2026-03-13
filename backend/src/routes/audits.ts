@@ -4,17 +4,22 @@ import { supabaseAdmin } from '../utils/supabase';
 import { authMiddleware } from '../middleware/auth';
 import { rateLimiter } from '../middleware/rateLimiter';
 import { runAuditPipeline } from '../jobs/auditPipeline';
-import { PLAN_LIMITS } from '../config/constants';
-import { PlanType } from '../types';
+import { PLAN_LIMITS, REGION_LANGUAGE } from '../config/constants';
+import { PlanType, BusinessMode, Region, Language } from '../types';
 import { logger } from '../utils/logger';
 
 const router = Router();
 
 const createAuditSchema = z.object({
   domain: z.string().min(3).max(255),
+  businessMode: z.enum(['saas', 'local']).default('saas'),
+  region: z.enum(['global', 'germany', 'france', 'spain', 'poland', 'portugal']).default('global'),
+  language: z.enum(['en', 'de', 'fr', 'es', 'pl', 'pt']).optional(),
+  keywords: z.array(z.string().max(80)).max(10).optional(),
+  // Legacy fields kept for backwards compat
   targetKeywords: z.array(z.string()).optional(),
-  targetMarket: z.string().default('global'),
-  targetLanguage: z.string().default('en'),
+  targetMarket: z.string().optional(),
+  targetLanguage: z.string().optional(),
 });
 
 router.use(authMiddleware);
@@ -31,7 +36,27 @@ router.post('/', async (req: Request, res: Response) => {
     return;
   }
 
-  const { domain, targetKeywords, targetMarket, targetLanguage } = parsed.data;
+  const {
+    domain,
+    businessMode,
+    region,
+    keywords,
+    targetKeywords,
+    targetMarket,
+  } = parsed.data;
+
+  // Resolve language: explicit > auto from region > legacy > default en
+  const resolvedLanguage: Language =
+    (parsed.data.language as Language) ||
+    (parsed.data.targetLanguage as Language) ||
+    REGION_LANGUAGE[region as Region] ||
+    'en';
+
+  // Merge keywords
+  const allKeywords = [
+    ...(keywords ?? []),
+    ...(targetKeywords ?? []),
+  ].slice(0, 10);
 
   // Check monthly limit
   const limits = PLAN_LIMITS[plan];
@@ -53,14 +78,15 @@ router.post('/', async (req: Request, res: Response) => {
   }
 
   // Create audit row
+  const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
   const { data: audit, error } = await supabaseAdmin
     .from('audits')
     .insert({
       user_id: userId,
-      domain: domain.replace(/^https?:\/\//, ''),
-      target_keywords: targetKeywords,
-      target_market: targetMarket,
-      target_language: targetLanguage,
+      domain: cleanDomain,
+      target_keywords: allKeywords.length > 0 ? allKeywords : null,
+      target_market: region,
+      target_language: resolvedLanguage,
       plan,
       status: 'pending',
     })
@@ -74,9 +100,15 @@ router.post('/', async (req: Request, res: Response) => {
   }
 
   // Fire pipeline async
-  runAuditPipeline(audit.id, domain, plan, targetLanguage).catch((err) =>
-    logger.error('Pipeline error', { auditId: audit.id, err })
-  );
+  runAuditPipeline({
+    auditId: audit.id,
+    domain: cleanDomain,
+    plan,
+    businessMode: businessMode as BusinessMode,
+    region: region as Region,
+    language: resolvedLanguage,
+    keywords: allKeywords,
+  }).catch(err => logger.error('Pipeline error', { auditId: audit.id, err }));
 
   res.status(201).json({ audit });
 });

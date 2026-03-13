@@ -13,10 +13,17 @@ const priorityVariant: Record<Recommendation['priority'], 'error' | 'warning' | 
   low: 'default',
 };
 
-const effortImpactColor = {
-  low: 'text-green-600',
-  medium: 'text-yellow-600',
-  high: 'text-red-600',
+const effortLabels: Record<Recommendation['effort'], { label: string; color: string }> = {
+  quick_win: { label: '⚡ Quick win', color: 'text-green-600' },
+  moderate: { label: '⏱ Moderate effort', color: 'text-yellow-600' },
+  significant: { label: '🔧 Significant effort', color: 'text-red-600' },
+};
+
+const categoryLabels: Record<string, string> = {
+  accuracy: 'Fix Accuracy Issues',
+  visibility: 'Boost Visibility',
+  website: 'Website Improvements',
+  presence: 'Third-Party Presence',
 };
 
 export function RecommendationsSection({ recommendations }: RecommendationsSectionProps) {
@@ -34,27 +41,34 @@ export function RecommendationsSection({ recommendations }: RecommendationsSecti
       <div className="space-y-6">
         {Object.entries(grouped).map(([category, recs]) => (
           <div key={category}>
-            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">{category}</h3>
+            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">
+              {categoryLabels[category] ?? category}
+            </h3>
             <div className="space-y-3">
-              {recs.map((r, i) => (
-                <Card key={i}>
-                  <CardContent className="py-4">
-                    <div className="flex items-start gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-semibold text-gray-900">{r.title}</span>
-                          <Badge variant={priorityVariant[r.priority]}>{r.priority}</Badge>
-                        </div>
-                        <p className="text-sm text-gray-600 leading-relaxed">{r.description}</p>
-                        <div className="flex gap-4 mt-2 text-xs">
-                          <span className={effortImpactColor[r.effort]}>Effort: {r.effort}</span>
-                          <span className={effortImpactColor[r.impact]}>Impact: {r.impact}</span>
+              {recs.map((r, i) => {
+                const effort = effortLabels[r.effort];
+                return (
+                  <Card key={i}>
+                    <CardContent className="py-4">
+                      <div className="flex items-start gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className="font-semibold text-gray-900">{r.title}</span>
+                            <Badge variant={priorityVariant[r.priority]}>{r.priority}</Badge>
+                            {effort && (
+                              <span className={`text-xs font-medium ${effort.color}`}>{effort.label}</span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-600 leading-relaxed">{r.description}</p>
+                          {r.based_on && (
+                            <p className="text-xs text-gray-400 mt-1.5 italic">Based on: {r.based_on}</p>
+                          )}
                         </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </div>
         ))}

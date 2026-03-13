@@ -60,8 +60,11 @@ export function PromptResultsSection({ promptResults, brandName }: PromptResults
       <div className="space-y-6">
         {Object.entries(byPrompt).slice(0, 10).map(([promptId, responses]) => (
           <div key={promptId} className="border border-gray-200 rounded-xl overflow-hidden">
-            <div className="bg-gray-50 px-4 py-3 text-sm font-medium text-gray-700 border-b border-gray-200">
-              Prompt: <code className="text-primary-600">{promptId}</code>
+            <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+              <div className="text-xs text-gray-400 mb-0.5">Prompt [{promptId}]</div>
+              <div className="text-sm font-medium text-gray-700">
+                &ldquo;{responses[0]?.promptText || promptId}&rdquo;
+              </div>
             </div>
             <div className="divide-y divide-gray-100">
               {responses.map((r) => (
@@ -70,7 +73,8 @@ export function PromptResultsSection({ promptResults, brandName }: PromptResults
                     <Badge variant={(MODEL_COLORS[r.model] ?? 'default') as any} className="capitalize">
                       {r.model}
                     </Badge>
-                    <span className="text-xs text-gray-400">{r.latencyMs}ms</span>
+                    <span className="text-xs text-gray-400">{r.latency_ms}ms</span>
+                    {r.search_enabled && <span className="text-xs text-blue-400">🔍 web search</span>}
                     {r.error && <span className="text-xs text-red-500">Error</span>}
                   </div>
                   {r.response ? (

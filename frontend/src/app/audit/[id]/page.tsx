@@ -81,8 +81,8 @@ export default function AuditReportPage() {
             <OverviewSection audit={audit} />
             <QuickWinsSection recommendations={recommendations} />
             <AccuracySection hallucinations={hallucinations} accuracyScore={audit.accuracy_score} />
-            <PromptResultsSection promptResults={promptResults} brandName={brandProfile?.brandName} />
-            <CompetitorsSection competitors={competitors} brandName={brandProfile?.brandName} brandMentions={brandTotalMentions} />
+            <PromptResultsSection promptResults={promptResults} brandName={brandProfile?.brand.name} />
+            <CompetitorsSection competitors={competitors} brandName={brandProfile?.brand.name} brandMentions={brandTotalMentions} />
             <PerceptionSection sentiment={sentiment} perceptionScore={audit.perception_score} />
             <WebsiteReadinessSection websiteReadiness={websiteReadiness} />
             <ThirdPartySection thirdParty={thirdParty} />

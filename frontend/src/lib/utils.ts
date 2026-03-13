@@ -38,30 +38,38 @@ export function scoreBg(score: number): string {
 
 export function statusLabel(status: string): string {
   const labels: Record<string, string> = {
-    pending: 'Pending',
-    scraping: 'Scraping website...',
-    third_party_check: 'Checking platforms...',
-    generating_prompts: 'Generating prompts...',
-    querying_models: 'Querying AI models...',
-    analyzing: 'Analyzing results...',
-    scoring: 'Calculating scores...',
-    completed: 'Completed',
-    failed: 'Failed',
+    pending: 'Preparing...',
+    scraping: 'Analysing website...',
+    third_party_check: 'Checking third-party presence...',
+    generating_prompts: 'Preparing questions...',
+    querying_models: 'Asking AI models (with web search)...',
+    analyzing: 'Detecting hallucinations...',
+    scoring: 'Generating recommendations...',
+    completed: 'Your report is ready!',
+    failed: 'Audit failed',
   };
   return labels[status] ?? status;
 }
 
 export function statusProgress(status: string): number {
   const progress: Record<string, number> = {
-    pending: 0,
-    scraping: 10,
+    pending: 2,
+    scraping: 12,
     third_party_check: 22,
-    generating_prompts: 35,
-    querying_models: 55,
-    analyzing: 72,
-    scoring: 88,
+    generating_prompts: 28,
+    querying_models: 65,
+    analyzing: 80,
+    scoring: 92,
     completed: 100,
     failed: 100,
   };
   return progress[status] ?? 0;
+}
+
+export function scoreLabel(score: number): string {
+  if (score >= 80) return 'Excellent';
+  if (score >= 60) return 'Good';
+  if (score >= 40) return 'Moderate';
+  if (score >= 20) return 'Weak';
+  return 'Invisible';
 }

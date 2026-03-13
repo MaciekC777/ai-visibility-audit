@@ -30,8 +30,7 @@ export function QuickWinsSection({ recommendations }: QuickWinsSectionProps) {
               </div>
               <p className="text-sm text-gray-600">{r.description}</p>
               <div className="flex gap-3 mt-2 text-xs text-gray-400">
-                <span>Effort: {r.effort}</span>
-                <span>Impact: {r.impact}</span>
+                <span>Effort: {r.effort?.replace(/_/g, ' ')}</span>
               </div>
             </div>
           </div>
