@@ -57,7 +57,7 @@ export const POSITION_SCORE_LATER = 40;
 export const POSITION_SCORE_NONE = 0;
 
 export const MODEL_NAMES = {
-  openai: 'gpt-4o',
+  openai: 'chatgpt-4o-latest',
   anthropic: 'claude-sonnet-4-20250514',
   gemini: 'gemini-2.0-flash',
   perplexity: 'sonar',
