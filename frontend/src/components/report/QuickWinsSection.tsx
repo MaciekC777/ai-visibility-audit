@@ -14,7 +14,8 @@ export function QuickWinsSection({ recommendations }: QuickWinsSectionProps) {
 
   return (
     <section id="quick-wins" className="scroll-mt-24">
-      <h2 className="text-2xl font-display font-bold text-gray-900 mb-6">Quick Wins</h2>
+      <h2 className="text-2xl font-display font-bold text-gray-900 mb-1">Do this today</h2>
+      <p className="text-sm text-gray-400 mb-6">Highest-impact actions to improve your AI visibility score</p>
       <div className="space-y-4">
         {quickWins.map((r, i) => (
           <div key={i} className="flex gap-4 p-5 bg-amber-50 border border-amber-200 rounded-xl">
