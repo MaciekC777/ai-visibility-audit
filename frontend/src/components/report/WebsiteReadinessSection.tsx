@@ -1,8 +1,9 @@
-import { WebsiteReadiness } from '@/types';
+import { WebsiteReadiness, BrandProfile, BrandProfileSaaS, BrandProfileLocal } from '@/types';
 import { Card, CardContent } from '@/components/ui/Card';
 
 interface WebsiteReadinessSectionProps {
   websiteReadiness?: WebsiteReadiness;
+  brandProfile?: BrandProfile;
 }
 
 const importanceColor: Record<string, string> = {
@@ -12,33 +13,62 @@ const importanceColor: Record<string, string> = {
   low: 'text-gray-500 bg-gray-50',
 };
 
-export function WebsiteReadinessSection({ websiteReadiness }: WebsiteReadinessSectionProps) {
+export function WebsiteReadinessSection({ websiteReadiness, brandProfile }: WebsiteReadinessSectionProps) {
   if (!websiteReadiness) return null;
 
   const checks = websiteReadiness.checks ?? [];
   const score = websiteReadiness.score;
   const passedCount = checks.filter(c => c.status === 'pass').length;
 
-  return (
-    <section id="website" className="scroll-mt-24">
-      <h2 className="text-2xl font-display font-bold text-gray-900 mb-6">
-        {websiteReadiness.mode === 'local' ? 'Local SEO Readiness' : 'Website AI Readiness'}
-      </h2>
+  const keyFeatures = brandProfile?.mode === 'saas'
+    ? (brandProfile as BrandProfileSaaS).features?.core?.slice(0, 6) ?? []
+    : (brandProfile as BrandProfileLocal | undefined)?.services?.primary?.slice(0, 6) ?? [];
 
-      <div className="flex items-center gap-4 mb-6 p-5 bg-white border border-gray-200 rounded-xl">
-        <div className={`text-5xl font-bold ${score >= 70 ? 'text-green-600' : score >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
-          {score}
-        </div>
+  const description = brandProfile?.brand.description;
+
+  return (
+    <section id="website" className="scroll-mt-24 space-y-6">
+      <div className="flex items-start justify-between">
         <div>
-          <div className="font-semibold text-gray-900">
-            {websiteReadiness.mode === 'local' ? 'Local Visibility Score' : 'GEO Readiness Score'}
+          <h2 className="text-2xl font-display font-bold text-gray-900">Website Analysis</h2>
+          <p className="text-sm text-gray-400 mt-1">Technical readiness and content structure for AI indexing</p>
+        </div>
+        <div className="text-center shrink-0">
+          <div className={`text-4xl font-bold ${score >= 70 ? 'text-green-600' : score >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
+            {score}
           </div>
-          <div className="text-sm text-gray-500">{passedCount}/{checks.length} checks passed</div>
+          <div className="text-xs text-gray-400">{passedCount}/{checks.length} passed</div>
         </div>
       </div>
 
+      {/* Key features / services */}
+      {(keyFeatures.length > 0 || description) && (
+        <Card>
+          <CardContent>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">
+              {brandProfile?.mode === 'saas' ? 'Key Features Detected' : 'Key Services Detected'}
+            </h3>
+            {description && (
+              <p className="text-sm text-gray-500 mb-3 italic">&ldquo;{description.slice(0, 200)}{description.length > 200 ? '…' : ''}&rdquo;</p>
+            )}
+            {keyFeatures.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {keyFeatures.map((f, i) => (
+                  <span key={i} className="px-3 py-1 bg-primary-50 text-primary-700 text-xs font-medium rounded-full border border-primary-100">
+                    {f}
+                  </span>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardContent>
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">
+            {websiteReadiness.mode === 'local' ? 'Local SEO Checks' : 'SEO & AI Readiness Checks'}
+          </h3>
           <div className="space-y-3">
             {checks.map((check) => (
               <div key={check.check} className="flex items-start gap-3">
@@ -77,3 +107,4 @@ export function WebsiteReadinessSection({ websiteReadiness }: WebsiteReadinessSe
     </section>
   );
 }
+

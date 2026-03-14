@@ -7,8 +7,26 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { OverviewSection } from '@/components/report/OverviewSection';
 import { QuickWinsSection } from '@/components/report/QuickWinsSection';
 import { AnalyticsPanelSection } from '@/components/report/AnalyticsPanelSection';
+import { CompetitorsSection } from '@/components/report/CompetitorsSection';
+import { PromptResultsSection } from '@/components/report/PromptResultsSection';
+import { PerceptionSection } from '@/components/report/PerceptionSection';
+import { AccuracySection } from '@/components/report/AccuracySection';
+import { WebsiteReadinessSection } from '@/components/report/WebsiteReadinessSection';
+import { RecommendationsSection } from '@/components/report/RecommendationsSection';
+import { GeoReadinessSection } from '@/components/report/GeoReadinessSection';
 import { Button } from '@/components/ui/Button';
 import { formatDate } from '@/lib/utils';
+
+function SectionLabel({ number, label }: { number: number; label: string }) {
+  return (
+    <div className="flex items-center gap-3 mb-6">
+      <div className="w-7 h-7 rounded-full bg-primary-100 text-primary-700 text-xs font-bold flex items-center justify-center shrink-0">
+        {number}
+      </div>
+      <div className="h-px flex-1 bg-gray-200" />
+    </div>
+  );
+}
 
 export default function AuditReportPage() {
   const { id } = useParams<{ id: string }>();
@@ -39,7 +57,12 @@ export default function AuditReportPage() {
     );
   }
 
-  const { audit, competitors, sentiment, recommendations, summary } = report;
+  const {
+    audit, brandProfile, promptResults, hallucinations,
+    competitors, sentiment, recommendations,
+    websiteReadiness, thirdParty, summary,
+  } = report;
+
   const brandTotalMentions = Object.values(report.visibilityAnalysis?.mentionsByModel ?? {}).reduce((a, b) => a + b, 0);
 
   return (
@@ -47,7 +70,7 @@ export default function AuditReportPage() {
       <Sidebar />
       <main className="flex-1 px-8 py-8 min-w-0 max-w-5xl mx-auto">
 
-        {/* Header */}
+        {/* Page header */}
         <div className="flex items-start justify-between mb-10">
           <div>
             <div className="flex items-center gap-2 text-sm text-gray-400 mb-2">
@@ -66,28 +89,103 @@ export default function AuditReportPage() {
           </Link>
         </div>
 
-        {/* 3 sections */}
         <div className="space-y-16">
 
-          {/* Section 1 — Overview */}
-          <OverviewSection
-            audit={audit}
-            summary={summary}
-            competitors={competitors}
-            brandMentions={brandTotalMentions}
-          />
+          {/* 1 — Overview */}
+          <div>
+            <SectionLabel number={1} label="Overview" />
+            <OverviewSection
+              audit={audit}
+              summary={summary}
+              competitors={competitors}
+              brandMentions={brandTotalMentions}
+            />
+          </div>
 
-          {/* Section 2 — Do this today */}
-          <QuickWinsSection recommendations={recommendations} />
+          {/* 2 — Do this today */}
+          <div>
+            <SectionLabel number={2} label="Do this today" />
+            <QuickWinsSection recommendations={recommendations} />
+          </div>
 
-          {/* Section 3 — Analytics Panel */}
-          <AnalyticsPanelSection
-            audit={audit}
-            visibilityAnalysis={report.visibilityAnalysis}
-            competitors={competitors}
-            sentiment={sentiment}
-            brandMentions={brandTotalMentions}
-          />
+          {/* 3 — Analytics Panel */}
+          <div>
+            <SectionLabel number={3} label="Analytics Panel" />
+            <AnalyticsPanelSection
+              audit={audit}
+              visibilityAnalysis={report.visibilityAnalysis}
+              competitors={competitors}
+              sentiment={sentiment}
+              brandMentions={brandTotalMentions}
+            />
+          </div>
+
+          {/* 4 — Competitor Analysis */}
+          <div>
+            <SectionLabel number={4} label="Competitor Analysis" />
+            <div className="space-y-6">
+              <CompetitorsSection
+                competitors={competitors}
+                brandName={brandProfile?.brand.name}
+                brandMentions={brandTotalMentions}
+              />
+              {audit.target_keywords && audit.target_keywords.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Tracked Keywords</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {audit.target_keywords.map((kw, i) => (
+                      <span key={i} className="px-3 py-1.5 bg-white border border-gray-200 text-sm text-gray-700 rounded-lg">
+                        {kw}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 5 — Used Prompts + Responses */}
+          <div>
+            <SectionLabel number={5} label="Prompts & AI Responses" />
+            <PromptResultsSection
+              promptResults={promptResults}
+              brandName={brandProfile?.brand.name}
+            />
+          </div>
+
+          {/* 6 — How AI sees your brand */}
+          <div>
+            <SectionLabel number={6} label="How AI Sees Your Brand" />
+            <div className="space-y-6">
+              <PerceptionSection sentiment={sentiment} perceptionScore={audit.perception_score} />
+              <AccuracySection hallucinations={hallucinations} accuracyScore={audit.accuracy_score} />
+            </div>
+          </div>
+
+          {/* 7 — Website Analysis */}
+          <div>
+            <SectionLabel number={7} label="Website Analysis" />
+            <WebsiteReadinessSection
+              websiteReadiness={websiteReadiness}
+              brandProfile={brandProfile}
+            />
+          </div>
+
+          {/* 8 — Detailed Recommendations */}
+          <div>
+            <SectionLabel number={8} label="Detailed Recommendations" />
+            <RecommendationsSection recommendations={recommendations} />
+          </div>
+
+          {/* 9 — GEO Readiness Audit */}
+          <div>
+            <SectionLabel number={9} label="GEO Readiness Audit" />
+            <GeoReadinessSection
+              brandProfile={brandProfile}
+              websiteReadiness={websiteReadiness}
+              thirdParty={thirdParty}
+            />
+          </div>
 
         </div>
       </main>
