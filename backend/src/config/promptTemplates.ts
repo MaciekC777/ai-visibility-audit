@@ -256,8 +256,13 @@ export function generateSaaSPrompts(
   const tierOrder = ['free', 'starter', 'pro'] as const;
   const allowedTiers = tierOrder.slice(0, tierOrder.indexOf(tierLimit) + 1);
 
+  const hasCompetitor1 = !!(vars.competitor_1?.trim());
+  const hasCompetitor2 = !!(vars.competitor_2?.trim());
+
   const basePrompts = SAAS_PROMPTS_EN
     .filter(t => t.id !== 'K1' && t.id !== 'K2' && (allowedTiers as string[]).includes(t.tier))
+    .filter(t => hasCompetitor1 || !t.template.includes('{competitor_1}'))
+    .filter(t => hasCompetitor2 || !t.template.includes('{competitor_2}'))
     .map(t => ({
       id: t.id,
       category: t.category,
@@ -301,10 +306,14 @@ export function generateLocalPrompts(
   const allowedTiers = tierOrder.slice(0, tierOrder.indexOf(tierLimit) + 1);
 
   const hasCity = !!(vars.city && vars.city.trim());
+  const hasCompetitor1 = !!(vars.competitor_1?.trim());
+  const hasCompetitor2 = !!(vars.competitor_2?.trim());
 
   const basePrompts = templates
     .filter(t => t.id !== 'K1' && t.id !== 'K2' && (allowedTiers as string[]).includes(t.tier))
     .filter(t => hasCity || !t.template.includes('{city}'))
+    .filter(t => hasCompetitor1 || !t.template.includes('{competitor_1}'))
+    .filter(t => hasCompetitor2 || !t.template.includes('{competitor_2}'))
     .map(t => ({
       id: t.id,
       category: t.category,
