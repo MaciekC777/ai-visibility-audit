@@ -351,12 +351,34 @@ export async function scrapeLocalBrandProfile(domain: string): Promise<BrandProf
     phone = String((schemaAddress as any)['telephone'] ?? '');
   }
 
+  // Fallback: HTML microdata
+  if (!city) {
+    city = $('[itemprop="addressLocality"]').first().text().trim();
+  }
+  // Fallback: Open Graph locality meta tag
+  if (!city) {
+    city = $('meta[property="og:locality"]').attr('content')?.trim() ?? '';
+  }
+
   // Fallback: try contact page
   if (!address && contactHtml) {
     const $c = cheerio.load(contactHtml);
     const contactText = $c('body').text();
     const phoneMatch = contactText.match(/(?:\+\d{1,3}[\s-]?)?\(?\d{2,4}\)?[\s-]?\d{3,4}[\s-]?\d{3,4}/);
     if (phoneMatch) phone = phoneMatch[0];
+
+    // Try to find city via postal code pattern in contact page
+    if (!city) {
+      // Matches: "12345 CityName" or "12-345 CityName" (PL/CZ/DE/FR/ES/PT formats)
+      const cityMatch = contactText.match(/\b\d{2}[- ]?\d{3}\s+([A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽŁŚŻŹĆĄÓĘ][^\n\r,]{2,30})/);
+      if (cityMatch) city = cityMatch[1].trim().split(/\s{2,}/)[0].trim();
+    }
+  }
+
+  // Fallback: contact page microdata / itemprop
+  if (!city && contactHtml) {
+    const $c = cheerio.load(contactHtml);
+    city = $c('[itemprop="addressLocality"]').first().text().trim();
   }
 
   // Opening hours
@@ -510,7 +532,7 @@ export async function scrapeLocalBrandProfile(domain: string): Promise<BrandProf
       sample_prices: [],
     },
     market: {
-      service_area: city || 'local',
+      service_area: city,
       primary_language: ($('html').attr('lang') ?? 'en').split('-')[0],
       target_audience: '',
     },

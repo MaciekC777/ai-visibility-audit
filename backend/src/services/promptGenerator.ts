@@ -52,6 +52,8 @@ function buildLocalVars(profile: BrandProfileLocal): PromptGenVars {
   // Sample price
   const sampleService = profile.pricing.sample_prices[0]?.item ?? service1;
 
+  const city = profile.location.city || profile.market.service_area || '';
+
   return {
     brand: profile.brand.name,
     category: profile.brand.category,
@@ -59,11 +61,11 @@ function buildLocalVars(profile: BrandProfileLocal): PromptGenVars {
     competitor_1: competitor1,
     competitor_2: competitor2,
     use_case: 'everyday needs',
-    city: profile.location.city || profile.market.service_area,
+    city,
     service_1: service1,
     service_2: service2,
     sample_service: sampleService,
-    district: profile.location.region || profile.location.city,
+    district: profile.location.region || city,
     specific_service: specialty,
   };
 }

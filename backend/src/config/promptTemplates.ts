@@ -300,8 +300,11 @@ export function generateLocalPrompts(
   const tierOrder = ['free', 'starter', 'pro'] as const;
   const allowedTiers = tierOrder.slice(0, tierOrder.indexOf(tierLimit) + 1);
 
+  const hasCity = !!(vars.city && vars.city.trim());
+
   const basePrompts = templates
     .filter(t => t.id !== 'K1' && t.id !== 'K2' && (allowedTiers as string[]).includes(t.tier))
+    .filter(t => hasCity || !t.template.includes('{city}'))
     .map(t => ({
       id: t.id,
       category: t.category,
