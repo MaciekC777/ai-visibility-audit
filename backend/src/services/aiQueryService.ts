@@ -49,8 +49,6 @@ async function queryOpenAI(prompt: PromptItem): Promise<ModelResponse> {
         input: prompt.text,
         instructions: SYSTEM_PROMPT,
         max_output_tokens: 1024,
-        temperature: 0,
-        timeout: MODEL_TIMEOUT_MS,
       });
 
       // Extract text from output

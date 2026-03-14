@@ -57,7 +57,7 @@ export const POSITION_SCORE_LATER = 40;
 export const POSITION_SCORE_NONE = 0;
 
 export const MODEL_NAMES = {
-  openai: 'gpt-5.3-instant', // default ChatGPT model for free users as of March 2026
+  openai: 'gpt-4o',
   anthropic: 'claude-sonnet-4-20250514',
   gemini: 'gemini-2.0-flash',
   perplexity: 'sonar',
