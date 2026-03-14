@@ -14,6 +14,7 @@ import { PerceptionSection } from '@/components/report/PerceptionSection';
 import { WebsiteReadinessSection } from '@/components/report/WebsiteReadinessSection';
 import { ThirdPartySection } from '@/components/report/ThirdPartySection';
 import { RecommendationsSection } from '@/components/report/RecommendationsSection';
+import { SummarySection } from '@/components/report/SummarySection';
 import { Button } from '@/components/ui/Button';
 import { formatDate } from '@/lib/utils';
 
@@ -46,7 +47,7 @@ export default function AuditReportPage() {
     );
   }
 
-  const { audit, brandProfile, promptResults, hallucinations, competitors, sentiment, recommendations, websiteReadiness, thirdParty } = report;
+  const { audit, brandProfile, promptResults, hallucinations, competitors, sentiment, recommendations, websiteReadiness, thirdParty, summary } = report;
 
   const brandTotalMentions = Object.values(report.visibilityAnalysis?.mentionsByModel ?? {}).reduce((a, b) => a + b, 0);
 
@@ -79,6 +80,7 @@ export default function AuditReportPage() {
           {/* Report sections */}
           <div className="space-y-12">
             <OverviewSection audit={audit} />
+            <SummarySection summary={summary} brandName={brandProfile?.brand.name} />
             <QuickWinsSection recommendations={recommendations} />
             <AccuracySection hallucinations={hallucinations} accuracyScore={audit.accuracy_score} />
             <PromptResultsSection promptResults={promptResults} brandName={brandProfile?.brand.name} />

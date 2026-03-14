@@ -53,5 +53,6 @@ function buildReport(audit: Audit, results: AuditResult[]): AuditReport {
     websiteReadiness: get('website_readiness') as AuditReport['websiteReadiness'],
     thirdParty: get('third_party') as AuditReport['thirdParty'],
     visibilityAnalysis: get('visibility_analysis') as AuditReport['visibilityAnalysis'],
+    summary: get('summary') as AuditReport['summary'],
   };
 }

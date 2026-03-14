@@ -239,6 +239,11 @@ export interface SourceAnalysis {
 
 // ─── Full Report ──────────────────────────────────────────────────────────────
 
+export interface AuditSummary {
+  paragraph1: string;
+  paragraph2: string;
+}
+
 export interface AuditReport {
   audit: Audit;
   brandProfile?: BrandProfile;
@@ -251,4 +256,5 @@ export interface AuditReport {
   thirdParty?: ThirdPartyPresence[];
   visibilityAnalysis?: VisibilityAnalysis;
   sourceAnalysis?: SourceAnalysis;
+  summary?: AuditSummary;
 }

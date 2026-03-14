@@ -13,6 +13,7 @@ import {
 import { detectHallucinations } from '../services/hallucinationDetector';
 import { calculateAllScores } from '../services/scorer';
 import { generateRecommendations } from '../services/recommendationGenerator';
+import { generateSummary } from '../services/summaryGenerator';
 import { PLAN_LIMITS } from '../config/constants';
 import { AuditInput, AuditStatus, VisibilityAnalysis } from '../types';
 
@@ -136,6 +137,16 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
       language
     );
     await saveResult(auditId, 'recommendations', recommendations);
+
+    const summary = await generateSummary(
+      profile,
+      scores,
+      competitors,
+      sentiments,
+      hallucinations,
+      language
+    );
+    await saveResult(auditId, 'summary', summary);
 
     // ── Complete ──
     await setStatus(auditId, 'completed', {
