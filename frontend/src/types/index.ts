@@ -239,6 +239,11 @@ export interface SourceAnalysis {
 
 // ─── Full Report ──────────────────────────────────────────────────────────────
 
+export interface CompetitorSearchResult {
+  competitors: Array<{ name: string }>;
+  searchQueries: string[];
+}
+
 export interface AuditSummary {
   paragraph1: string;
   paragraph2: string;
@@ -257,4 +262,5 @@ export interface AuditReport {
   visibilityAnalysis?: VisibilityAnalysis;
   sourceAnalysis?: SourceAnalysis;
   summary?: AuditSummary;
+  competitorSearch?: CompetitorSearchResult;
 }

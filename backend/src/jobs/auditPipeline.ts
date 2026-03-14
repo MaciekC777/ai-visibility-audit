@@ -14,6 +14,7 @@ import { detectHallucinations } from '../services/hallucinationDetector';
 import { calculateAllScores } from '../services/scorer';
 import { generateRecommendations } from '../services/recommendationGenerator';
 import { generateSummary } from '../services/summaryGenerator';
+import { findCompetitorsViaSearch } from '../services/competitorFinder';
 import { PLAN_LIMITS } from '../config/constants';
 import { AuditInput, AuditStatus, VisibilityAnalysis } from '../types';
 
@@ -60,6 +61,10 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
     // ── STEP 2: Website Readiness ──
     const websiteReadiness = await analyzeWebsiteReadiness(domain, businessMode, profile);
     await saveResult(auditId, 'website_readiness', websiteReadiness);
+
+    // ── STEP 2b: Competitor search (web) ──
+    const competitorSearch = await findCompetitorsViaSearch(profile);
+    await saveResult(auditId, 'competitor_search', competitorSearch);
 
     // ── STEP 3: Third-party check ── (15-25%)
     await setStatus(auditId, 'third_party_check');

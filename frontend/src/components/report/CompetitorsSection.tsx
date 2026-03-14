@@ -1,6 +1,6 @@
 'use client';
 
-import { Competitor } from '@/types';
+import { Competitor, CompetitorSearchResult } from '@/types';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 
@@ -8,6 +8,7 @@ interface CompetitorsSectionProps {
   competitors?: Competitor[];
   brandName?: string;
   brandMentions?: number;
+  competitorSearch?: CompetitorSearchResult;
 }
 
 const MODEL_LABELS: Record<string, string> = {
@@ -17,7 +18,7 @@ const MODEL_LABELS: Record<string, string> = {
   perplexity: 'Perplexity',
 };
 
-export function CompetitorsSection({ competitors, brandName, brandMentions = 0 }: CompetitorsSectionProps) {
+export function CompetitorsSection({ competitors, brandName, brandMentions = 0, competitorSearch }: CompetitorsSectionProps) {
   const top = competitors?.slice(0, 10) ?? [];
   const maxCount = Math.max(...top.map((c) => c.total_mentions), brandMentions, 1);
 
@@ -147,6 +148,45 @@ export function CompetitorsSection({ competitors, brandName, brandMentions = 0 }
             ))}
           </div>
 
+        </div>
+      )}
+
+      {/* Competitors found via Google search */}
+      {competitorSearch && (
+        <div className="mt-8">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="text-base font-semibold text-gray-700">Competitors found via search</h3>
+            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">for reference only · not used in competitive analysis</span>
+          </div>
+
+          {/* Search queries used */}
+          {competitorSearch.searchQueries.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-4 mt-3">
+              {competitorSearch.searchQueries.map((q, i) => (
+                <div key={i} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg">
+                  <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <span className="text-xs text-gray-600">&ldquo;{q}&rdquo;</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {competitorSearch.competitors.length === 0 ? (
+            <p className="text-sm text-gray-400">No competitors found via search.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {competitorSearch.competitors.map((c, i) => (
+                <div key={i} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg">
+                  <span className="w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-xs flex items-center justify-center font-medium shrink-0">
+                    {i + 1}
+                  </span>
+                  <span className="text-sm text-gray-700">{c.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </section>

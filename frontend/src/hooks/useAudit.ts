@@ -54,5 +54,6 @@ function buildReport(audit: Audit, results: AuditResult[]): AuditReport {
     thirdParty: get('third_party') as AuditReport['thirdParty'],
     visibilityAnalysis: get('visibility_analysis') as AuditReport['visibilityAnalysis'],
     summary: get('summary') as AuditReport['summary'],
+    competitorSearch: get('competitor_search') as AuditReport['competitorSearch'],
   };
 }

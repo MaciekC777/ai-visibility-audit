@@ -60,7 +60,7 @@ export default function AuditReportPage() {
   const {
     audit, brandProfile, promptResults, hallucinations,
     competitors, sentiment, recommendations,
-    websiteReadiness, thirdParty, summary,
+    websiteReadiness, thirdParty, summary, competitorSearch,
   } = report;
 
   const brandTotalMentions = Object.values(report.visibilityAnalysis?.mentionsByModel ?? {}).reduce((a, b) => a + b, 0);
@@ -128,6 +128,7 @@ export default function AuditReportPage() {
                 competitors={competitors}
                 brandName={brandProfile?.brand.name}
                 brandMentions={brandTotalMentions}
+                competitorSearch={competitorSearch}
               />
               {audit.target_keywords && audit.target_keywords.length > 0 && (
                 <div>
