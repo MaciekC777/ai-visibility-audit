@@ -79,7 +79,13 @@ export default function AuditReportPage() {
 
           {/* Report sections */}
           <div className="space-y-12">
-            <OverviewSection audit={audit} />
+            <OverviewSection
+              audit={audit}
+              visibilityAnalysis={report.visibilityAnalysis}
+              competitors={competitors}
+              sentiment={sentiment}
+              brandMentions={brandTotalMentions}
+            />
             <SummarySection summary={summary} brandName={brandProfile?.brand.name} />
             <QuickWinsSection recommendations={recommendations} />
             <AccuracySection hallucinations={hallucinations} accuracyScore={audit.accuracy_score} />
