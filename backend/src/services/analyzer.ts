@@ -296,20 +296,9 @@ export function extractCompetitors(
   const brandLower = brandName.toLowerCase();
   const allCompetitorMentions: string[] = [];
 
-  // Collect from LLM-detected competitors
+  // Collect from LLM-detected competitors only (regex extraction removed — too noisy for non-English text)
   for (const pm of promptMentions) {
     allCompetitorMentions.push(...pm.competitors_mentioned);
-  }
-
-  // Also extract from text with regex (capitalized phrases)
-  for (const resp of responses) {
-    const matches = resp.response.match(/\b[A-Z][a-zA-Z]+(?:\s[A-Z][a-zA-Z]+)?\b/g) ?? [];
-    for (const match of matches) {
-      const lower = match.toLowerCase();
-      if (lower !== brandLower && match.length > 2 && !STOPWORDS.has(lower)) {
-        allCompetitorMentions.push(match);
-      }
-    }
   }
 
   // Count occurrences
