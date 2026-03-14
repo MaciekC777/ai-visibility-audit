@@ -63,7 +63,7 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
     await saveResult(auditId, 'website_readiness', websiteReadiness);
 
     // ── STEP 2b: Competitor search (web) ──
-    const competitorSearch = await findCompetitorsViaSearch(profile);
+    const competitorSearch = await findCompetitorsViaSearch(profile, language);
     await saveResult(auditId, 'competitor_search', competitorSearch);
 
     // ── STEP 3: Third-party check ── (15-25%)

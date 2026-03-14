@@ -1,7 +1,21 @@
-import { BrandProfile, BrandProfileLocal, BrandProfileSaaS } from '../types';
+import { BrandProfile, BrandProfileLocal, BrandProfileSaaS, Language } from '../types';
 import { MODEL_NAMES } from '../config/constants';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
+
+// ─── Localized query fragments ────────────────────────────────────────────────
+
+const PHRASES: Record<Language, {
+  best: string; topRated: string; alternativesTo: string;
+  alternatives: string; similar: string; businesses: string; software: string; tools: string;
+}> = {
+  en: { best: 'best', topRated: 'top rated', alternativesTo: 'alternatives to', alternatives: 'alternatives', similar: 'similar', businesses: 'businesses', software: 'software', tools: 'tools' },
+  pl: { best: 'najlepsza', topRated: 'najlepiej oceniana', alternativesTo: 'alternatywy dla', alternatives: 'alternatywy', similar: 'podobne', businesses: 'firmy', software: 'oprogramowanie', tools: 'narzędzia' },
+  de: { best: 'bestes', topRated: 'bestbewertet', alternativesTo: 'Alternativen zu', alternatives: 'Alternativen', similar: 'ähnliche', businesses: 'Unternehmen', software: 'Software', tools: 'Tools' },
+  fr: { best: 'meilleur', topRated: 'mieux noté', alternativesTo: 'alternatives à', alternatives: 'alternatives', similar: 'similaires', businesses: 'entreprises', software: 'logiciel', tools: 'outils' },
+  es: { best: 'mejor', topRated: 'mejor valorado', alternativesTo: 'alternativas a', alternatives: 'alternativas', similar: 'similares', businesses: 'negocios', software: 'software', tools: 'herramientas' },
+  pt: { best: 'melhor', topRated: 'mais bem avaliado', alternativesTo: 'alternativas a', alternatives: 'alternativas', similar: 'similares', businesses: 'negócios', software: 'software', tools: 'ferramentas' },
+};
 
 export interface CompetitorSearchResult {
   competitors: Array<{ name: string }>;
@@ -10,8 +24,9 @@ export interface CompetitorSearchResult {
 
 // ─── Query builder ────────────────────────────────────────────────────────────
 
-function buildSearchQueries(profile: BrandProfile): string[] {
+function buildSearchQueries(profile: BrandProfile, language: Language): string[] {
   const brandName = profile.brand.name;
+  const p = PHRASES[language] ?? PHRASES.en;
 
   if (profile.mode === 'local') {
     const local = profile as BrandProfileLocal;
@@ -28,15 +43,15 @@ function buildSearchQueries(profile: BrandProfile): string[] {
 
     if (locationHint) {
       return [
-        `best ${specificType} in ${locationHint}`,
-        `top rated ${specificType} ${locationHint} alternatives to ${brandName}`,
+        `${p.best} ${specificType} ${locationHint}`,
+        `${p.topRated} ${specificType} ${locationHint} ${p.alternativesTo} ${brandName}`,
       ];
     }
 
-    // No location at all — fall back to brand-centric queries
+    // No location — brand-centric queries
     return [
-      `${brandName} similar businesses competitors`,
-      `best ${specificType} businesses`,
+      `${brandName} ${p.similar} ${p.businesses} ${p.alternatives}`,
+      `${p.best} ${specificType} ${p.businesses}`,
     ];
   }
 
@@ -47,8 +62,8 @@ function buildSearchQueries(profile: BrandProfile): string[] {
     saas.brand.category;
 
   return [
-    `${brandName} alternatives competitors ${new Date().getFullYear()}`,
-    `best ${specificType} software tools`,
+    `${brandName} ${p.alternatives} ${new Date().getFullYear()}`,
+    `${p.best} ${specificType} ${p.software} ${p.tools}`,
   ];
 }
 
@@ -104,9 +119,10 @@ Return ONLY a JSON array: ["Name A", "Name B", "Name C"]`,
 
 export async function findCompetitorsViaSearch(
   profile: BrandProfile,
+  language: Language = 'en',
 ): Promise<CompetitorSearchResult> {
   const brandName = profile.brand.name;
-  const searchQueries = buildSearchQueries(profile);
+  const searchQueries = buildSearchQueries(profile, language);
   const allNames: string[] = [];
 
   for (const query of searchQueries) {
