@@ -117,29 +117,30 @@ async function generateSmartPrompts(
     : buildLocalContext(profile as BrandProfileLocal);
 
   const categoryGuide = profile.mode === 'saas'
-    ? `- A_discovery (2–3): general discovery, "what tools for X", "best X software"
-- B_factual (2–3): direct questions about THIS brand — pricing, features, "what is X", "tell me about X"
-- C_comparison (1–2): comparing THIS brand with competitors
-- D_recommendation (1–2): "recommend something for Y use case"
-- E_evaluation (1–2): pros/cons, "is X worth it", "is X good for beginners"`
-    : `- A_discovery (2–3): "where to find X in [city]", "best X near me", "recommended X"
-- B_factual (2–3): direct questions about THIS business — hours, location, services, "what does X offer"
-- C_comparison (1–2): "X vs competitor", "better than X in [city]"
-- D_recommendation (1–2): "looking for X for [occasion/need]"
-- E_evaluation (1–2): reviews, "is X worth visiting", "what do people think about X"`;
+    ? `- A_discovery (1–2): general discovery queries — "best tools for X", "top X software in ${new Date().getFullYear()}"
+- B_factual (1–2): what THIS brand offers, its strengths, target users — "what is ${brandName}", "who is ${brandName} for", "what does ${brandName} do"
+- C_comparison (1): comparing THIS brand with a competitor — "${brandName} vs [competitor]", "is ${brandName} better than [X]"
+- D_recommendation (1): recommendation for a use case — "best [category] for [persona]", no brand name
+- E_evaluation (0–1): overall opinion — "is ${brandName} worth it", "pros and cons of ${brandName}"`
+    : `- A_discovery (1–2): discovery queries — "best [category] in [city]", "recommended [category] near me", "top-rated [category] in [city]"
+- B_factual (1–2): what THIS business offers, its specialties, cuisine/style — "what does ${brandName} specialize in", "what cuisine does ${brandName} serve", "what services does ${brandName} offer" — NEVER ask about hours, phone, address, or other operational details
+- C_comparison (1): comparing THIS business with a local competitor
+- D_recommendation (1): recommendation for an occasion — "where to eat [cuisine type] in [city]", no brand name
+- E_evaluation (0–1): reviews/reputation — "is ${brandName} worth visiting", "what do people say about ${brandName}"`;
 
   const keywordNote = keywords.length > 0
     ? `\nAlso include 1–2 prompts using these keywords: ${keywords.slice(0, 5).join(', ')}`
     : '';
 
-  const systemPrompt = `You are generating search prompts that real users type into AI assistants (ChatGPT, Gemini, Claude) when looking for businesses or software.
+  const systemPrompt = `You are generating search prompts that real users type into AI assistants (ChatGPT, Gemini, Claude) when researching businesses or software.
 
 Rules:
 - Write ONLY in ${langName} — every single prompt must be in ${langName}
-- Prompts must sound like real, natural user queries — not marketing copy
-- Use specific details from the brand context (cuisine type, city, specific features, price ranges)
-- Brand name "${brandName}" should appear in B and C category prompts only
-- A and D prompts should NOT mention the brand name — they simulate blind discovery
+- Prompts must sound like genuine, natural user queries — conversational, not marketing copy
+- Use specific details from the brand context (cuisine type, city, specific features, price ranges, specialties)
+- Brand name "${brandName}" should appear in B, C, and E category prompts only
+- A and D prompts must NOT mention the brand name — they simulate blind discovery
+- NEVER generate prompts asking about opening hours, phone numbers, email, or exact address — AI models cannot reliably answer these and they produce no useful visibility signal
 - Return ONLY a valid JSON array, no markdown`;
 
   const userPrompt = `Brand context:
