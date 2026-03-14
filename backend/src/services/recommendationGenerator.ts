@@ -11,6 +11,7 @@ import {
 } from '../types';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
+import { LANGUAGE_NAMES } from '../config/constants';
 
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
@@ -21,8 +22,10 @@ export async function generateRecommendations(
   thirdParty: ThirdPartyPresence[],
   hallucinations: VerifiedClaim[],
   competitors: Competitor[],
-  sourceAnalysis: SourceAnalysis
+  sourceAnalysis: SourceAnalysis,
+  language: string = 'en'
 ): Promise<Recommendation[]> {
+  const languageName = LANGUAGE_NAMES[language as keyof typeof LANGUAGE_NAMES] ?? 'English';
   const missingPlatforms = thirdParty.filter(p => p.status === 'missing').map(p => p.platform);
   const criticalIssues = hallucinations.filter(h => h.severity === 'high');
   const failedChecks = websiteReadiness.checks?.filter(c => c.status === 'fail') ?? [];
@@ -31,6 +34,7 @@ export async function generateRecommendations(
   const systemPrompt = `You are an AI visibility consultant specializing in brand visibility in AI model responses (ChatGPT, Claude, Gemini, Perplexity).
 Generate specific, actionable recommendations based on THIS audit's concrete findings.
 Every recommendation MUST reference a specific finding. No generic advice.
+IMPORTANT: Write ALL text fields (title, description, based_on) in ${languageName}. Do not use any other language.
 Return ONLY a valid JSON array. No markdown.`;
 
   const userPrompt = `Business Mode: ${profile.mode}
@@ -89,7 +93,7 @@ Sort: critical → high → medium → low, then quick_win → moderate → sign
     return JSON.parse(cleaned) as Recommendation[];
   } catch (e) {
     logger.error('Failed to generate recommendations', { error: e });
-    return getDefaultRecommendations(profile, scores, missingPlatforms, criticalIssues, failedChecks);
+    return getDefaultRecommendations(profile, scores, missingPlatforms, criticalIssues, failedChecks, languageName);
   }
 }
 
@@ -106,7 +110,8 @@ function getDefaultRecommendations(
   scores: AuditScores,
   missingPlatforms: string[],
   criticalIssues: VerifiedClaim[],
-  failedChecks: WebsiteReadiness['checks']
+  failedChecks: WebsiteReadiness['checks'],
+  _languageName?: string
 ): Recommendation[] {
   const recs: Recommendation[] = [];
   const brandName = profile.brand.name;

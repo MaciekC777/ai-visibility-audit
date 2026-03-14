@@ -12,6 +12,7 @@ import {
 } from '../types';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
+import { LANGUAGE_NAMES } from '../config/constants';
 
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
@@ -190,7 +191,8 @@ export async function analyzeVisibility(
 
 export async function analyzeSentiment(
   responses: ModelResponse[],
-  brandName: string
+  brandName: string,
+  language: string = 'en'
 ): Promise<SentimentResult[]> {
   // Filter E (evaluation) responses + any with brand mentioned
   const evalResponses = responses.filter(r =>
@@ -210,6 +212,8 @@ export async function analyzeSentiment(
       fabricated_opinions_detail: null,
     }));
   }
+
+  const languageName = LANGUAGE_NAMES[language as keyof typeof LANGUAGE_NAMES] ?? 'English';
 
   const systemPrompt = `You are a sentiment analysis engine for brand perception.
 Return ONLY a valid JSON array. No markdown, no explanation.`;
@@ -231,7 +235,7 @@ Analyze each response and return a JSON array:
 Responses to analyze:
 ${evalResponses.map(r => `[promptId:${r.promptId}][model:${r.model}]: ${r.response.slice(0, 500)}`).join('\n\n')}
 
-Analyze regardless of response language. Return in English.`;
+Analyze regardless of response language. Write all text fields (specific_praise, specific_criticism, fabricated_opinions_detail) in ${languageName}.`;
 
   try {
     const res = await openai.chat.completions.create({

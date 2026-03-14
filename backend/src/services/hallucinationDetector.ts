@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import { ModelResponse, BrandProfile, VerifiedClaim, ExtractedClaim, VerifiableFact } from '../types';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
+import { LANGUAGE_NAMES } from '../config/constants';
 
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
@@ -66,13 +67,16 @@ ${factualResponses.map(r =>
 
 async function verifyClaims(
   claims: ExtractedClaim[],
-  profile: BrandProfile
+  profile: BrandProfile,
+  language: string = 'en'
 ): Promise<VerifiedClaim[]> {
+  const languageName = LANGUAGE_NAMES[language as keyof typeof LANGUAGE_NAMES] ?? 'English';
   const verifiableClaims = claims.filter(c => c.verifiable);
   if (verifiableClaims.length === 0) return [];
 
   const systemPrompt = `You are a fact-checking engine.
 Compare AI claims against verified facts from the brand's own website.
+Write all text fields (explanation, correction) in ${languageName}.
 Return ONLY a valid JSON array. No markdown.`;
 
   const facts = profile.verifiable_facts;
@@ -144,7 +148,8 @@ Hours: ${JSON.stringify(profile.contact.opening_hours)}`;
 
 export async function detectHallucinations(
   responses: ModelResponse[],
-  profile: BrandProfile
+  profile: BrandProfile,
+  language: string = 'en'
 ): Promise<VerifiedClaim[]> {
   const brandName = profile.brand.name;
 
@@ -156,7 +161,7 @@ export async function detectHallucinations(
     if (extractedClaims.length === 0) return [];
 
     // Step 2: Verify vs ground truth
-    const verifiedClaims = await verifyClaims(extractedClaims, profile);
+    const verifiedClaims = await verifyClaims(extractedClaims, profile, language);
     logger.info('Verified claims', { issues: verifiedClaims.length });
 
     return verifiedClaims;

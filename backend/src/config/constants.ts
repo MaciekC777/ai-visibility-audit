@@ -73,6 +73,16 @@ export const REGION_LANGUAGE: Record<Region, Language> = {
   portugal: 'pt',
 };
 
+// Language code → full language name (for LLM prompts)
+export const LANGUAGE_NAMES: Record<Language, string> = {
+  en: 'English',
+  de: 'German',
+  fr: 'French',
+  es: 'Spanish',
+  pl: 'Polish',
+  pt: 'Portuguese',
+};
+
 // ─── Third-party platforms per mode and plan ──────────────────────────────────
 
 export const SAAS_PLATFORMS_BY_PLAN: Record<PlanType, string[]> = {

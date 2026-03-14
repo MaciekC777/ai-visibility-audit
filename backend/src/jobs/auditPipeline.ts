@@ -95,7 +95,7 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
     await saveResult(auditId, 'visibility_analysis', visibilityAnalysis);
 
     // Sentiment analysis
-    const sentiments = await analyzeSentiment(responses, profile.brand.name);
+    const sentiments = await analyzeSentiment(responses, profile.brand.name, language);
     await saveResult(auditId, 'sentiment', sentiments);
 
     // Competitor mapping
@@ -107,7 +107,7 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
     await saveResult(auditId, 'source_analysis', sourceAnalysis);
 
     // Hallucination detection (2-step)
-    const hallucinations = await detectHallucinations(responses, profile);
+    const hallucinations = await detectHallucinations(responses, profile, language);
     await saveResult(auditId, 'hallucinations', hallucinations);
 
     // ── STEP 7: Score + Recommendations ── (78-98%)
@@ -132,7 +132,8 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
       thirdParty,
       hallucinations,
       competitors,
-      sourceAnalysis
+      sourceAnalysis,
+      language
     );
     await saveResult(auditId, 'recommendations', recommendations);
 
