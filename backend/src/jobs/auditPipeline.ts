@@ -177,7 +177,7 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
       logger.error('Competitor search failed', { auditId, error: e });
     }
     await saveResult(auditId, 'competitor_search', competitorSearch);
-    const seedCompetitors = competitorSearch.competitors.map(c => c.name);
+    const seedCompetitors = (competitorSearch.competitors ?? []).map(c => c.name).filter(Boolean);
 
     // ── STEP 3: Third-party check ──
     await setStatus(auditId, 'third_party_check');
@@ -238,9 +238,9 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
 
     // Aggregate competitors from responses
     const rawCompetitorCounts = new Map<string, number>();
-    for (const a of unifiedAnalyses) {
+    for (const a of (unifiedAnalyses ?? [])) {
       for (const c of (a.competitors_in_response ?? [])) {
-        rawCompetitorCounts.set(c.name, (rawCompetitorCounts.get(c.name) ?? 0) + 1);
+        if (c.name) rawCompetitorCounts.set(c.name, (rawCompetitorCounts.get(c.name) ?? 0) + 1);
       }
     }
     const rawForValidation = [...rawCompetitorCounts.entries()].map(([name, count]) => ({ name, count }));
@@ -281,7 +281,7 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
     // ── STEP 7: Scores ──
     await setStatus(auditId, 'scoring');
 
-    const brandTotalMentions = Object.values(visibilityAnalysis.mentionsByModel).reduce((a, b) => a + b, 0);
+    const brandTotalMentions = Object.values(visibilityAnalysis?.mentionsByModel ?? {}).reduce((a, b) => a + b, 0);
     const scores = calculateAllScores(
       visibilityAnalysis,
       hallucinations,

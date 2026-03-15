@@ -28,10 +28,11 @@ export async function generateRecommendations(
   checklistGaps: ChecklistResult[] = []
 ): Promise<Recommendation[]> {
   const languageName = LANGUAGE_NAMES[language as keyof typeof LANGUAGE_NAMES] ?? 'English';
-  const missingPlatforms = thirdParty.filter(p => p.status === 'missing').map(p => p.platform);
-  const criticalIssues = hallucinations.filter(h => h.severity === 'high');
-  const failedChecks = websiteReadiness.checks?.filter(c => c.status === 'fail') ?? [];
-  const brandName = profile.brand.name;
+  const p = profile as any;
+  const brandName = p.brand_name ?? p.brand?.name ?? 'Brand';
+  const missingPlatforms = (thirdParty ?? []).filter(tp => tp.status === 'missing').map(tp => tp.platform);
+  const criticalIssues = (hallucinations ?? []).filter(h => h.severity === 'high');
+  const failedChecks = websiteReadiness?.checks?.filter(c => c.status === 'fail') ?? [];
 
   const systemPrompt = `You are an AI visibility consultant specializing in brand visibility in AI model responses (ChatGPT, Claude, Gemini, Perplexity).
 Generate specific, actionable recommendations based on THIS audit's concrete findings.
@@ -51,9 +52,9 @@ Return ONLY a valid JSON array. No markdown.`;
       ).join('\n')
     : '\nChecklist gaps: none detected';
 
-  const userPrompt = `Business Mode: ${profile.mode}
-Brand: ${brandName} (${profile.brand.domain})
-Category: ${profile.brand.category}
+  const userPrompt = `Business Mode: ${p.mode ?? p.business_type ?? 'general'}
+Brand: ${brandName} (${p.brand?.domain ?? p.location?.city ?? ''})
+Category: ${p.brand?.category ?? p.category ?? ''}
 
 Scores:
 - AI Visibility Score: ${scores.visibilityScore}/100 ${getScoreLabel(scores.visibilityScore)}
@@ -130,10 +131,13 @@ function getDefaultRecommendations(
   _languageName?: string
 ): Recommendation[] {
   const recs: Recommendation[] = [];
-  const brandName = profile.brand.name;
+  const dp = profile as any;
+  const brandName = dp.brand_name ?? dp.brand?.name ?? 'Brand';
+  const brandDomain = dp.brand?.domain ?? dp.location?.city ?? '';
+  const profileMode = dp.mode ?? dp.business_type ?? 'saas';
 
   // Local: GBP first
-  if (profile.mode === 'local' && missingPlatforms.includes('Google Business Profile')) {
+  if ((profileMode === 'local' || profileMode === 'local_business' || profileMode === 'restaurant') && missingPlatforms.includes('Google Business Profile')) {
     recs.push({
       priority: 'critical',
       effort: 'quick_win',
@@ -166,14 +170,14 @@ function getDefaultRecommendations(
     });
   }
 
-  if (profile.mode === 'saas' && failedChecks) {
-    const llmsFailed = failedChecks.find(c => c.check.includes('llms.txt'));
+  if (profileMode !== 'local' && profileMode !== 'local_business' && profileMode !== 'restaurant' && failedChecks.length > 0) {
+    const llmsFailed = failedChecks.find(c => c.check?.includes('llms.txt'));
     if (llmsFailed) {
       recs.push({
         priority: 'high',
         effort: 'quick_win',
         title: 'Create /llms.txt to guide AI models',
-        description: `${brandName} is missing /llms.txt. This file gives AI models direct context about your brand, features, and key facts. Create it at ${profile.brand.domain}/llms.txt with brand summary, product list, and pricing overview.`,
+        description: `${brandName} is missing /llms.txt. This file gives AI models direct context about your brand, features, and key facts. Create it at ${brandDomain}/llms.txt with brand summary, product list, and pricing overview.`,
         based_on: 'llms.txt file missing from website readiness audit',
         category: 'website',
       });

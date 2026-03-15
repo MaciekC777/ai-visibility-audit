@@ -949,13 +949,14 @@ async function analyzeReadinessFromRawData(
     recommendation: botsAllowed ? undefined : 'Allow GPTBot, ClaudeBot, PerplexityBot in robots.txt',
   });
   checks.push({ check: 'llms.txt', status: sig.llms_txt_exists ? 'pass' : 'fail', importance: 'low' });
-  checks.push({ check: 'hreflang tags', status: sig.hreflang_tags.length > 0 ? 'pass' : 'fail', importance: 'low' });
+  checks.push({ check: 'hreflang tags', status: (sig.hreflang_tags?.length ?? 0) > 0 ? 'pass' : 'fail', importance: 'low' });
 
   // Business-type specific checks
+  const schemaTypes: string[] = sig.schema_types ?? [];
   if (businessType === 'saas') {
-    const hasPricing = navLinks.includes('pricing') || profile.pricing.plans.length > 0;
+    const hasPricing = navLinks.includes('pricing') || (profile.pricing?.plans?.length ?? 0) > 0;
     checks.push({ check: 'Pricing page', status: hasPricing ? 'pass' : 'fail', importance: 'high' });
-    const hasFaq = sig.schema_types.some(t => t === 'FAQPage') || navLinks.includes('faq');
+    const hasFaq = schemaTypes.some(t => t === 'FAQPage') || navLinks.includes('faq');
     checks.push({ check: 'FAQ section', status: hasFaq ? 'pass' : 'fail', importance: 'medium' });
     const hasBlog = navLinks.includes('blog');
     checks.push({ check: 'Blog/Resources', status: hasBlog ? 'pass' : 'fail', importance: 'medium' });
@@ -964,25 +965,25 @@ async function analyzeReadinessFromRawData(
     const hasFreeTrial = /free trial|start free|book demo|get demo/.test(allText);
     checks.push({ check: 'Free trial / Demo CTA', status: hasFreeTrial ? 'pass' : 'fail', importance: 'high' });
   } else if (businessType === 'ecommerce') {
-    const hasProductSchema = sig.schema_types.some(t => t === 'Product');
+    const hasProductSchema = schemaTypes.some(t => t === 'Product');
     checks.push({ check: 'Product schema', status: hasProductSchema ? 'pass' : 'fail', importance: 'critical' });
     const hasReturns = /returns|shipping|delivery/.test(navLinks);
     checks.push({ check: 'Returns/Shipping page', status: hasReturns ? 'pass' : 'fail', importance: 'high' });
-    const hasReviews = sig.schema_types.some(t => t === 'Review' || t === 'AggregateRating');
+    const hasReviews = schemaTypes.some(t => t === 'Review' || t === 'AggregateRating');
     checks.push({ check: 'Reviews/Ratings', status: hasReviews ? 'pass' : 'fail', importance: 'medium' });
   } else if (businessType === 'agency') {
     const hasCaseStudies = /case-studies|portfolio|work/.test(navLinks);
     checks.push({ check: 'Case studies/Portfolio', status: hasCaseStudies ? 'pass' : 'fail', importance: 'high' });
     const hasTeam = /team|about/.test(navLinks);
     checks.push({ check: 'Team page', status: hasTeam ? 'pass' : 'fail', importance: 'medium' });
-    const hasTestimonials = allText.includes('testimonial') || sig.schema_types.some(t => t === 'Review');
+    const hasTestimonials = allText.includes('testimonial') || schemaTypes.some(t => t === 'Review');
     checks.push({ check: 'Testimonials', status: hasTestimonials ? 'pass' : 'fail', importance: 'medium' });
   } else if (businessType === 'local_business' || businessType === 'restaurant') {
-    const hasLocalSchema = sig.schema_types.some(t => t.includes('LocalBusiness') || t.includes('Restaurant'));
+    const hasLocalSchema = schemaTypes.some(t => t.includes('LocalBusiness') || t.includes('Restaurant'));
     checks.push({ check: 'LocalBusiness schema', status: hasLocalSchema ? 'pass' : 'fail', importance: 'critical' });
-    const hasNap = !!(profile.contact_info.phone && profile.contact_info.address);
+    const hasNap = !!(profile.contact_info?.phone && profile.contact_info?.address);
     checks.push({ check: 'NAP (Name/Address/Phone)', status: hasNap ? 'pass' : 'fail', importance: 'high' });
-    const hasHours = profile.contact_info.hours !== null;
+    const hasHours = profile.contact_info?.hours != null;
     checks.push({ check: 'Opening hours', status: hasHours ? 'pass' : 'fail', importance: 'high' });
     const hasGoogleBusiness = allText.includes('google.com/maps') || allText.includes('g.page');
     checks.push({ check: 'Google Business link', status: hasGoogleBusiness ? 'pass' : 'fail', importance: 'medium' });

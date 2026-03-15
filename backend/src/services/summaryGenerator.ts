@@ -20,27 +20,32 @@ export async function generateSummary(
   language: string = 'en'
 ): Promise<AuditSummary> {
   const languageName = LANGUAGE_NAMES[language as keyof typeof LANGUAGE_NAMES] ?? 'English';
-  const brandName = profile.brand.name;
+  const p = profile as any;
+  const brandName = p.brand_name ?? p.brand?.name ?? 'Brand';
 
-  const positiveCount = sentiments.filter(s => s.overall_sentiment === 'positive').length;
-  const negativeCount = sentiments.filter(s => s.overall_sentiment === 'negative').length;
+  const safeSentiments = sentiments ?? [];
+  const safeCompetitors = competitors ?? [];
+  const safeHallucinations = hallucinations ?? [];
+
+  const positiveCount = safeSentiments.filter(s => s.overall_sentiment === 'positive').length;
+  const negativeCount = safeSentiments.filter(s => s.overall_sentiment === 'negative').length;
   const sentimentLabel = positiveCount > negativeCount * 2
     ? 'predominantly positive'
     : negativeCount > positiveCount
     ? 'predominantly negative'
     : 'mixed';
 
-  const topCompetitors = competitors.slice(0, 3).map(c => c.name).join(', ');
-  const highThreat = competitors.filter(c => c.replacement_rate > 0.2);
-  const criticalHallucinations = hallucinations.filter(h => h.severity === 'high');
+  const topCompetitors = safeCompetitors.slice(0, 3).map(c => c.name).join(', ');
+  const highThreat = safeCompetitors.filter(c => c.replacement_rate > 0.2);
+  const criticalHallucinations = safeHallucinations.filter(h => h.severity === 'high');
 
   const systemPrompt = `You are an AI visibility analyst writing an executive summary for a brand audit report.
 Write exactly 2 paragraphs. Be specific — use the exact numbers provided. No generic filler.
 IMPORTANT: Write entirely in ${languageName}. Do not mix languages.
 Return ONLY a JSON object: { "paragraph1": "...", "paragraph2": "..." }`;
 
-  const userPrompt = `Brand: ${brandName} (${profile.brand.domain})
-Category: ${profile.brand.category} | Mode: ${profile.mode}
+  const userPrompt = `Brand: ${brandName} (${p.brand?.domain ?? p.location?.city ?? ''})
+Category: ${p.brand?.category ?? p.category ?? ''} | Mode: ${p.mode ?? p.business_type ?? 'general'}
 
 Scores:
 - Visibility: ${scores.visibilityScore}/100
@@ -49,7 +54,7 @@ Scores:
 - Composite: ${scores.compositeScore}/100
 - Market Rank: #${scores.marketRank}
 
-AI Sentiment: ${sentimentLabel} (${positiveCount} positive, ${negativeCount} negative out of ${sentiments.length} responses)
+AI Sentiment: ${sentimentLabel} (${positiveCount} positive, ${negativeCount} negative out of ${safeSentiments.length} responses)
 Competitors found in AI responses: ${topCompetitors || 'none'}
 High-threat competitors (replace brand): ${highThreat.map(c => c.name).join(', ') || 'none'}
 Critical hallucinations: ${criticalHallucinations.length}

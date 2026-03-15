@@ -73,7 +73,7 @@ function evaluateAutoItem(
     case 'entity_01':
       status = meta.has_schema_org ? 'pass' : 'fail';
       detail = meta.has_schema_org
-        ? `Schema.org found: ${meta.schema_types_found.join(', ')}`
+        ? `Schema.org found: ${(meta.schema_types_found ?? []).join(', ')}`
         : 'No Schema.org markup found';
       break;
     case 'entity_02':

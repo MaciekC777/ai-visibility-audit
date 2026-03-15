@@ -332,7 +332,7 @@ export function aggregateAnalysis(
 
     for (const a of analyses) {
       const compList = a.competitors_in_response ?? [];
-      const found = compList.find(c => c.name.toLowerCase() === nameLower);
+      const found = compList.find(c => c.name?.toLowerCase() === nameLower);
       if (found) {
         totalMentions++;
         models.add(a.model);
@@ -364,6 +364,7 @@ export function aggregateAnalysis(
   const claims: ClaimForVerification[] = [];
   for (const a of analyses) {
     for (const claim of (a.claims ?? [])) {
+      if (!claim.statement) continue;
       const key = claim.statement.toLowerCase().trim();
       if (!claimTexts.has(key)) {
         claimTexts.add(key);
