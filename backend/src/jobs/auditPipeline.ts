@@ -257,7 +257,8 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
     const { visibilityAnalysis, sentimentResults, competitors, claims } = aggregateAnalysis(
       unifiedAnalyses,
       responses,
-      validatedCompetitorNames
+      validatedCompetitorNames,
+      profile.brand_name
     );
 
     await saveResult(auditId, 'visibility_analysis', visibilityAnalysis);

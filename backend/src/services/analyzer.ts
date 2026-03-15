@@ -199,9 +199,9 @@ Return JSON:
 export function aggregateAnalysis(
   analyses: UnifiedResponseAnalysis[],
   responses: ModelResponse[],
-  validatedCompetitors: string[]
+  validatedCompetitors: string[],
+  brandName: string = ''
 ): AggregatedResults {
-  const brandName = analyses[0] ? '' : ''; // not needed for aggregation
 
   // ── Visibility Analysis ──
   const discoveryAnalyses = analyses.filter(a =>
@@ -239,10 +239,20 @@ export function aggregateAnalysis(
     ? modelsWithDiscoveryMention.size / allModels.length
     : 0;
 
-  // mentionsByModel
+  // mentionsByModel — only count organic mentions (exclude prompts that already contain the brand name)
   const mentionsByModel: Record<string, number> = {};
   const mentionsByCategory: Record<string, number> = {};
+  const brandLower = brandName.toLowerCase();
+  const directPromptKeys = new Set(
+    brandName
+      ? responses
+          .filter(r => brandLower && r.promptText.toLowerCase().includes(brandLower))
+          .map(r => `${r.promptId}_${r.model}`)
+      : []
+  );
   for (const a of analyses.filter(a => a.brand_mentioned)) {
+    const key = `${a.promptId}_${a.model}`;
+    if (directPromptKeys.has(key)) continue; // skip — brand was named in the prompt itself
     mentionsByModel[a.model] = (mentionsByModel[a.model] ?? 0) + 1;
     mentionsByCategory[a.category] = (mentionsByCategory[a.category] ?? 0) + 1;
   }
@@ -406,7 +416,7 @@ export async function analyzeVisibility(
       };
 
   const analyses = await runUnifiedAnalysis(responses, knowledgeMap, []);
-  const { visibilityAnalysis } = aggregateAnalysis(analyses, responses, []);
+  const { visibilityAnalysis } = aggregateAnalysis(analyses, responses, [], brandName);
   return visibilityAnalysis;
 }
 
