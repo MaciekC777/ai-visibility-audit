@@ -1,12 +1,12 @@
 'use client';
 
-import { BrandProfile, BrandProfileSaaS, WebsiteReadiness, ThirdPartyPresence } from '@/types';
+import { AnyBrandProfile, BrandProfileSaaS, WebsiteReadiness, ThirdPartyPresence } from '@/types';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { getT, ReportTranslations } from '@/lib/reportTranslations';
 
 interface GeoReadinessSectionProps {
-  brandProfile?: BrandProfile;
+  brandProfile?: AnyBrandProfile;
   websiteReadiness?: WebsiteReadiness;
   thirdParty?: ThirdPartyPresence[];
   language?: string;
@@ -39,15 +39,16 @@ function scoreVariant(score: number): 'success' | 'info' | 'warning' | 'error' {
 }
 
 function buildCategories(
-  brandProfile: BrandProfile | undefined,
+  brandProfile: AnyBrandProfile | undefined,
   websiteReadiness: WebsiteReadiness | undefined,
   thirdParty: ThirdPartyPresence[],
   t: ReportTranslations,
 ): GeoCategory[] {
-  const meta = brandProfile?.website_meta;
+  const p = brandProfile as any;
+  const meta = p?.website_meta as BrandProfileSaaS['website_meta'] | undefined;
   const checks = websiteReadiness?.checks ?? [];
-  const isSaaS = brandProfile?.mode === 'saas';
-  const saasProfile = isSaaS ? (brandProfile as BrandProfileSaaS) : null;
+  const isSaaS = p?.mode === 'saas' || (p?.business_type && !['local_business', 'restaurant'].includes(p.business_type));
+  const saasProfile = isSaaS ? (p as BrandProfileSaaS) : null;
 
   const findCheck = (keyword: string) =>
     checks.find(c => c.check.toLowerCase().includes(keyword.toLowerCase()));

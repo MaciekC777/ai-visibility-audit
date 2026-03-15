@@ -130,6 +130,74 @@ export interface BrandProfileLocal {
 
 export type BrandProfile = BrandProfileSaaS | BrandProfileLocal;
 
+// ─── New universal brand profile (v2 pipeline) ────────────────────────────────
+
+export interface BrandKnowledgeMap {
+  brand_name: string;
+  business_type: string;
+  one_liner: string;
+  category: string;
+  subcategories: string[];
+  target_audience: string[];
+  core_offerings: string[];
+  key_features: string[];
+  signature_items: string[];
+  unique_selling_points: string[];
+  associated_concepts: string[];
+  typical_occasions: string[];
+  pricing: {
+    model: string;
+    plans: Array<{ name: string; price: string; highlights: string[] }>;
+    price_range: string;
+  };
+  location: {
+    city: string | null;
+    region: string | null;
+    country: string | null;
+    neighborhood: string | null;
+    service_area: string;
+  };
+  competitors_from_website: string[];
+  competitors_likely: string[];
+  contact_info: {
+    email: string | null;
+    phone: string | null;
+    address: string | null;
+    hours: string | null;
+  };
+  social_proof: {
+    customer_count: string | null;
+    notable_customers: string[];
+    awards_certifications: string[];
+  };
+  integrations: string[];
+  founding_year: string | null;
+  verifiable_facts: {
+    pricing_details: string[];
+    feature_claims: string[];
+    metrics_claimed: string[];
+    factual_details: string[];
+    contact_details: string[];
+  };
+}
+
+// Accepts both old and new profile shapes
+export type AnyBrandProfile = BrandProfile | BrandKnowledgeMap;
+
+/** Extract brand name from either BrandProfile or BrandKnowledgeMap */
+export function getBrandName(profile: AnyBrandProfile | null | undefined): string {
+  if (!profile) return '';
+  if ('brand_name' in profile) return profile.brand_name;
+  return (profile as BrandProfile).brand?.name ?? '';
+}
+
+/** Extract category from either profile shape */
+export function getBrandCategory(profile: AnyBrandProfile | null | undefined): string {
+  if (!profile) return '';
+  if ('brand_name' in profile) return (profile as BrandKnowledgeMap).category ?? '';
+  return (profile as BrandProfile).brand?.category ?? '';
+}
+
 export interface VerifiableFact {
   id: string;
   category: string;

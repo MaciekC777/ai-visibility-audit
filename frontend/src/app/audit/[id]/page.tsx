@@ -17,6 +17,7 @@ import { GeoReadinessSection } from '@/components/report/GeoReadinessSection';
 import { Button } from '@/components/ui/Button';
 import { formatDate } from '@/lib/utils';
 import { getT } from '@/lib/reportTranslations';
+import { getBrandName } from '@/types';
 
 function SectionLabel({ number, label }: { number: number; label: string }) {
   return (
@@ -132,7 +133,7 @@ export default function AuditReportPage() {
             <div className="space-y-6">
               <CompetitorsSection
                 competitors={competitors}
-                brandName={brandProfile?.brand.name}
+                brandName={getBrandName(brandProfile)}
                 brandMentions={brandTotalMentions}
                 competitorSearch={competitorSearch}
                 language={lang}
@@ -157,7 +158,7 @@ export default function AuditReportPage() {
             <SectionLabel number={5} label={t.sectionPrompts} />
             <PromptResultsSection
               promptResults={promptResults}
-              brandName={brandProfile?.brand.name}
+              brandName={getBrandName(brandProfile)}
               language={lang}
             />
           </div>

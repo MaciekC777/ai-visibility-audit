@@ -1,10 +1,10 @@
-import { WebsiteReadiness, BrandProfile, BrandProfileSaaS, BrandProfileLocal } from '@/types';
+import { WebsiteReadiness, AnyBrandProfile } from '@/types';
 import { Card, CardContent } from '@/components/ui/Card';
 import { getT } from '@/lib/reportTranslations';
 
 interface WebsiteReadinessSectionProps {
   websiteReadiness?: WebsiteReadiness;
-  brandProfile?: BrandProfile;
+  brandProfile?: AnyBrandProfile;
   language?: string;
 }
 
@@ -23,11 +23,12 @@ export function WebsiteReadinessSection({ websiteReadiness, brandProfile, langua
   const score = websiteReadiness.score;
   const passedCount = checks.filter(c => c.status === 'pass').length;
 
-  const keyFeatures = brandProfile?.mode === 'saas'
-    ? (brandProfile as BrandProfileSaaS).features?.core?.slice(0, 6) ?? []
-    : (brandProfile as BrandProfileLocal | undefined)?.services?.primary?.slice(0, 6) ?? [];
-
-  const description = brandProfile?.brand.description;
+  const p = brandProfile as any;
+  const isSaaS = p?.mode === 'saas' || (p?.business_type && !['local_business', 'restaurant'].includes(p.business_type));
+  const keyFeatures: string[] = (
+    p?.key_features ?? p?.features?.core ?? p?.services?.primary ?? []
+  ).slice(0, 6);
+  const description: string | undefined = p?.one_liner ?? p?.brand?.description;
 
   return (
     <section id="website" className="scroll-mt-24 space-y-6">
@@ -48,7 +49,7 @@ export function WebsiteReadinessSection({ websiteReadiness, brandProfile, langua
         <Card>
           <CardContent>
             <h3 className="text-sm font-semibold text-gray-700 mb-3">
-              {brandProfile?.mode === 'saas' ? t.keyFeaturesDetected : t.keyServicesDetected}
+              {isSaaS ? t.keyFeaturesDetected : t.keyServicesDetected}
             </h3>
             {description && (
               <p className="text-sm text-gray-500 mb-3 italic">&ldquo;{description.slice(0, 200)}{description.length > 200 ? '…' : ''}&rdquo;</p>
