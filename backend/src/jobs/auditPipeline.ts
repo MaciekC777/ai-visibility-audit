@@ -28,6 +28,82 @@ import {
   BrandKnowledgeMap,
 } from '../types';
 
+// ─── BrandKnowledgeMap → legacy BrandProfile adapter ─────────────────────────
+// Old services (recommendations, summary, hallucinations, prompts) expect
+// profile.brand.name, profile.features.core etc. This adapter shims those fields.
+
+function toCompatProfile(p: BrandKnowledgeMap): any {
+  return {
+    ...p,
+    // legacy nested shape
+    brand: {
+      name: p.brand_name,
+      domain: '',
+      description: p.one_liner,
+      tagline: p.one_liner,
+      category: p.category,
+      subcategories: p.subcategories ?? [],
+      founded_year: p.founding_year ?? '',
+      headquarters: p.location?.city ?? '',
+    },
+    mode: (p.business_type === 'local_business' || p.business_type === 'restaurant') ? 'local' : 'saas',
+    features: {
+      core: p.key_features ?? [],
+      differentiators: p.unique_selling_points ?? [],
+      integrations: p.integrations ?? [],
+      platforms: [],
+    },
+    pricing: {
+      currency: 'USD',
+      model: p.pricing?.model ?? 'unknown',
+      plans: (p.pricing?.plans ?? []).map((pl: any) => ({
+        name: pl.name,
+        price: pl.price,
+        billing_period: 'month',
+        key_limits: pl.highlights ?? [],
+      })),
+      free_trial: false,
+      enterprise: false,
+    },
+    location: {
+      address: p.contact_info?.address ?? '',
+      city: p.location?.city ?? '',
+      region: p.location?.region ?? '',
+      country: p.location?.country ?? '',
+      postal_code: '',
+    },
+    contact: {
+      phone: p.contact_info?.phone ?? '',
+      email: p.contact_info?.email ?? '',
+      opening_hours: {},
+    },
+    services: {
+      primary: p.core_offerings ?? [],
+      secondary: [],
+      specialties: p.signature_items ?? [],
+    },
+    competitors: {
+      direct: p.competitors_from_website ?? [],
+      indirect: p.competitors_likely ?? [],
+      local: p.competitors_from_website ?? [],
+      chains: p.competitors_likely ?? [],
+    },
+    verifiable_facts: p.verifiable_facts ?? [],
+    website_meta: {
+      has_schema_org: false,
+      schema_types_found: [],
+      has_llms_txt: false,
+      has_sitemap: false,
+      has_robots_txt: false,
+      ai_bots_allowed: 'unknown',
+      ssl: false,
+      has_faq: false,
+      has_pricing_page: (p.pricing?.plans?.length ?? 0) > 0,
+      languages_detected: ['en'],
+    },
+  };
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function setStatus(
@@ -79,6 +155,7 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
     })();
 
     const profile: BrandKnowledgeMap = await scrapeBrandProfile(domain);
+    const compatProfile = toCompatProfile(profile);  // adapter for legacy services
     await saveResult(auditId, 'brand_profile', profile);
     await supabaseAdmin.from('audits').update({ brand_name: profile.brand_name }).eq('id', auditId);
 
@@ -127,7 +204,7 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
     await setStatus(auditId, 'generating_prompts');
     let prompts: any[] = [];
     try {
-      prompts = await generatePrompts(profile, plan, language, region, keywords, seedCompetitors);
+      prompts = await generatePrompts(compatProfile, plan, language, region, keywords, seedCompetitors);
     } catch (e) {
       logger.error('Prompt generation failed', { auditId, error: e });
       throw e; // fatal — can't continue without prompts
@@ -194,7 +271,7 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
     // Hallucination detection (using pre-extracted claims)
     let hallucinations: any[] = [];
     try {
-      hallucinations = await detectHallucinations(responses, profile, language, claims);
+      hallucinations = await detectHallucinations(responses, compatProfile, language, claims);
     } catch (e) {
       logger.error('Hallucination detection failed', { auditId, error: e });
     }
@@ -217,7 +294,7 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
     let recommendations: any[] = [];
     try {
       recommendations = await generateRecommendations(
-        profile as any,
+        compatProfile,
         scores,
         websiteReadiness as any,
         thirdParty,
@@ -236,7 +313,7 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
     let summary: any = null;
     try {
       summary = await generateSummary(
-        profile as any,
+        compatProfile,
         scores,
         competitors,
         sentimentResults,
