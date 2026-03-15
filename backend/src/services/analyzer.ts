@@ -204,9 +204,12 @@ export function aggregateAnalysis(
 ): AggregatedResults {
 
   // ── Visibility Analysis ──
-  const discoveryAnalyses = analyses.filter(a =>
-    a.category === 'discovery' || a.category === 'A_discovery' || a.category === 'D_recommendation' || a.category === 'K_keyword'
-  );
+  // Discovery = prompts where the brand name does NOT appear in the question
+  // (A_discovery, D_recommendation, K_keyword, F_local_list)
+  const DISCOVERY_CATEGORIES = new Set([
+    'discovery', 'A_discovery', 'D_recommendation', 'K_keyword', 'F_local_list',
+  ]);
+  const discoveryAnalyses = analyses.filter(a => DISCOVERY_CATEGORIES.has(a.category));
 
   const mentionedDiscovery = discoveryAnalyses.filter(a => a.brand_mentioned);
   const mentionRate = discoveryAnalyses.length > 0
@@ -317,9 +320,7 @@ export function aggregateAnalysis(
 
   // ── Competitors ──
   const totalResponses = responses.length || 1;
-  const discoveryResponses = responses.filter(r =>
-    r.promptCategory === 'discovery' || r.promptCategory === 'A_discovery' || r.promptCategory === 'D_recommendation'
-  );
+  const discoveryResponses = responses.filter(r => DISCOVERY_CATEGORIES.has(r.promptCategory));
 
   const competitors: Competitor[] = validatedCompetitors.map(name => {
     const nameLower = name.toLowerCase();

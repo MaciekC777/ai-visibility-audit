@@ -162,7 +162,7 @@ Category values must be exactly one of: A_discovery, B_factual, C_comparison, D_
       { role: 'user', content: userPrompt },
     ],
     max_tokens: 1500,
-    temperature: 0.6,
+    temperature: 0,
     response_format: { type: 'json_object' },
   });
 
