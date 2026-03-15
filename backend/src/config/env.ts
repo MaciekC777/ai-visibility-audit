@@ -15,6 +15,9 @@ const envSchema = z.object({
   GEMINI_API_KEY: z.string().min(1),
   PERPLEXITY_API_KEY: z.string().min(1),
 
+  GOOGLE_SEARCH_API_KEY: z.string().optional(),
+  GOOGLE_CSE_ID: z.string().optional(),
+
   STRIPE_SECRET_KEY: z.string().min(1),
   STRIPE_WEBHOOK_SECRET: z.string().min(1),
   STRIPE_STARTER_PRICE_ID: z.string().optional(),

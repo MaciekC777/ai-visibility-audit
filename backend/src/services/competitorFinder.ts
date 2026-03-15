@@ -1,5 +1,4 @@
 import { BrandProfile, BrandProfileLocal, BrandProfileSaaS, Language } from '../types';
-import { MODEL_NAMES } from '../config/constants';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 
@@ -32,23 +31,18 @@ function buildSearchQueries(profile: BrandProfile, language: Language): string[]
     const local = profile as BrandProfileLocal;
     const city = local.location.city || local.location.region || '';
     const country = local.location.country || '';
-
-    // Use subcategory or first primary service — more specific than generic category
     const specificType =
       local.brand.subcategories?.[0] ||
       local.services?.primary?.[0] ||
       local.brand.category;
-
     const locationHint = city || country;
 
     if (locationHint) {
       return [
         `${p.best} ${specificType} ${locationHint}`,
-        `${p.topRated} ${specificType} ${locationHint} ${p.alternativesTo} ${brandName}`,
+        `${p.alternativesTo} ${brandName} ${locationHint}`,
       ];
     }
-
-    // No location — brand-centric queries
     return [
       `${brandName} ${p.similar} ${p.businesses} ${p.alternatives}`,
       `${p.best} ${specificType} ${p.businesses}`,
@@ -57,9 +51,7 @@ function buildSearchQueries(profile: BrandProfile, language: Language): string[]
 
   // SaaS
   const saas = profile as BrandProfileSaaS;
-  const specificType =
-    saas.brand.subcategories?.[0] ||
-    saas.brand.category;
+  const specificType = saas.brand.subcategories?.[0] || saas.brand.category;
 
   return [
     `${brandName} ${p.alternatives} ${new Date().getFullYear()}`,
@@ -67,52 +59,98 @@ function buildSearchQueries(profile: BrandProfile, language: Language): string[]
   ];
 }
 
-// ─── Perplexity search (web search always included) ───────────────────────────
+// ─── Name extraction from Google result titles/snippets ───────────────────────
 
-async function searchWithPerplexity(query: string, brandName: string): Promise<string[]> {
-  const res = await fetch('https://api.perplexity.ai/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.PERPLEXITY_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: MODEL_NAMES.perplexity,
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are a research assistant. Extract competitor/alternative business or product names from web search results. Return ONLY a valid JSON array of name strings — no URLs, no descriptions, no markdown.',
-        },
-        {
-          role: 'user',
-          content: `Search query: "${query}"
+/**
+ * Extracts competitor brand names from Google Search result titles and snippets
+ * using regex patterns — no AI involved.
+ *
+ * Patterns targeted:
+ *   "A vs B vs C"         → A, B, C
+ *   "Top 10 X: A, B, C"  → A, B, C  (after colon, comma-separated capitalized)
+ *   "Alternatives to X: A, B, C"
+ *   Capitalized multi-word names in "vs" context
+ */
+function extractNamesFromText(text: string, brandName: string): string[] {
+  const brandLower = brandName.toLowerCase();
+  const names: Set<string> = new Set();
 
-Based on actual search results, list the 6–8 most prominent competing businesses or products.
-Exclude "${brandName}" from the list.
-Return ONLY a JSON array: ["Name A", "Name B", "Name C"]`,
-        },
-      ],
-      max_tokens: 300,
-      temperature: 0,
-    }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`Perplexity API error: ${res.status}`);
+  // Pattern 1: "X vs Y" — capture both sides
+  const vsPattern = /([A-Z][A-Za-z0-9]*(?:\s+[A-Z][A-Za-z0-9]*)?)\s+vs\.?\s+([A-Z][A-Za-z0-9]*(?:\s+[A-Z][A-Za-z0-9]*)?)/g;
+  for (const m of text.matchAll(vsPattern)) {
+    names.add(m[1].trim());
+    names.add(m[2].trim());
   }
 
-  const data = (await res.json()) as any;
-  const text: string = data.choices?.[0]?.message?.content ?? '[]';
-  const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-  const parsed = JSON.parse(cleaned);
+  // Pattern 2: After colon — "Best CRM tools: Salesforce, HubSpot, Pipedrive"
+  const afterColon = /:\s*([A-Z][A-Za-z0-9]*(?:,\s*[A-Z][A-Za-z0-9]*)+)/g;
+  for (const m of text.matchAll(afterColon)) {
+    for (const part of m[1].split(',')) {
+      names.add(part.trim());
+    }
+  }
 
-  if (!Array.isArray(parsed)) return [];
+  // Pattern 3: "alternatives: A, B, C" or "competitors: A, B"
+  const altPattern = /(?:alternatives?|competitors?|options?)[^:]*:\s*([A-Z][A-Za-z0-9]*(?:,\s*[A-Z][A-Za-z0-9]*)+)/gi;
+  for (const m of text.matchAll(altPattern)) {
+    for (const part of m[1].split(',')) {
+      names.add(part.trim());
+    }
+  }
 
-  return (parsed as unknown[])
-    .filter((n): n is string => typeof n === 'string' && n.trim().length > 1)
-    .filter(n => n.toLowerCase() !== brandName.toLowerCase())
-    .map(n => n.trim());
+  // Filter: remove brand itself, short strings, common non-brand words
+  const stopWords = new Set([
+    'The', 'And', 'For', 'Top', 'Best', 'New', 'Free', 'Pro', 'Plus',
+    'Why', 'How', 'What', 'Which', 'Read', 'More', 'Get', 'Try', 'See',
+    'Compare', 'Review', 'Reviews', 'Guide', 'List', 'Tools', 'Software',
+    'Apps', 'App', 'Platform', 'Service', 'Solution', 'Options',
+  ]);
+
+  return [...names].filter(name =>
+    name.length > 2 &&
+    name.toLowerCase() !== brandLower &&
+    !stopWords.has(name) &&
+    /^[A-Z]/.test(name)
+  );
+}
+
+// ─── Google Custom Search API call ───────────────────────────────────────────
+
+interface GoogleSearchItem {
+  title: string;
+  snippet: string;
+  link: string;
+}
+
+async function searchGoogle(query: string, brandName: string): Promise<string[]> {
+  const apiKey = env.GOOGLE_SEARCH_API_KEY;
+  const cseId = env.GOOGLE_CSE_ID;
+
+  if (!apiKey || !cseId) {
+    throw new Error('GOOGLE_SEARCH_API_KEY or GOOGLE_CSE_ID not configured');
+  }
+
+  const url = new URL('https://www.googleapis.com/customsearch/v1');
+  url.searchParams.set('key', apiKey);
+  url.searchParams.set('cx', cseId);
+  url.searchParams.set('q', query);
+  url.searchParams.set('num', '10');
+
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    throw new Error(`Google CSE API error: ${res.status}`);
+  }
+
+  const data = (await res.json()) as { items?: GoogleSearchItem[] };
+  const items = data.items ?? [];
+
+  const allNames: string[] = [];
+  for (const item of items) {
+    const text = `${item.title} ${item.snippet}`;
+    allNames.push(...extractNamesFromText(text, brandName));
+  }
+
+  return allNames;
 }
 
 // ─── Main export ──────────────────────────────────────────────────────────────
@@ -127,7 +165,7 @@ export async function findCompetitorsViaSearch(
 
   for (const query of searchQueries) {
     try {
-      const names = await searchWithPerplexity(query, brandName);
+      const names = await searchGoogle(query, brandName);
       allNames.push(...names);
       logger.info('Competitor search query done', { query, found: names.length });
     } catch (e) {
@@ -135,7 +173,7 @@ export async function findCompetitorsViaSearch(
     }
   }
 
-  // Deduplicate, preserve first-appearance order, limit to 10
+  // Deduplicate (case-insensitive), preserve order, limit to 10
   const seen = new Set<string>();
   const unique: string[] = [];
   for (const name of allNames) {
