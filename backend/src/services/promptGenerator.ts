@@ -122,10 +122,11 @@ async function generateSmartPrompts(
 - C_comparison (1): comparing THIS brand with a competitor — "${brandName} vs [competitor]", "is ${brandName} better than [X]"
 - D_recommendation (1): recommendation for a use case — "best [category] for [persona]", no brand name
 - E_evaluation (0–1): overall opinion — "is ${brandName} worth it", "pros and cons of ${brandName}"`
-    : `- A_discovery (1–2): discovery queries — "best [category] in [city]", "recommended [category] near me", "top-rated [category] in [city]"
-- B_factual (1–2): what THIS business offers, its specialties, cuisine/style — "what does ${brandName} specialize in", "what cuisine does ${brandName} serve", "what services does ${brandName} offer" — NEVER ask about hours, phone, address, or other operational details
+    : `- F_local_list (1–2): explicit ranking/list queries — "give me 5 best [cuisine/specialty] in [city]", "top 5 [category] in [city] ranked", "ranking najlepszych [specialty] w [city]" — use the brand's specific cuisine or specialty type, NOT the generic category name; NO brand name
+- A_discovery (1): general discovery — "best [category] in [city]", "recommended [category] near me"
+- B_factual (1–2): what THIS business offers, its specialties, cuisine/style — "what does ${brandName} specialize in", "what cuisine does ${brandName} serve" — NEVER ask about hours, phone, address, or other operational details
 - C_comparison (1): comparing THIS business with a local competitor
-- D_recommendation (1): recommendation for an occasion — "where to eat [cuisine type] in [city]", no brand name
+- D_recommendation (1): recommendation for an occasion — "where to go for [cuisine/service] in [city]", no brand name
 - E_evaluation (0–1): reviews/reputation — "is ${brandName} worth visiting", "what do people say about ${brandName}"`;
 
   const keywordNote = keywords.length > 0

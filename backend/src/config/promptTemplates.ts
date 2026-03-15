@@ -38,6 +38,9 @@ export const SAAS_PROMPTS_EN: Array<{ id: string; category: PromptCategory; temp
 // ─── Local Business Prompt Templates ─────────────────────────────────────────
 // Polish (PL)
 export const LOCAL_PROMPTS_PL: Array<{ id: string; category: PromptCategory; template: string; tier: 'free' | 'starter' | 'pro' }> = [
+  { id: 'F1', category: 'F_local_list',   tier: 'free',    template: 'Podaj mi 5 najlepszych {specific_service} w {city}' },
+  { id: 'F2', category: 'F_local_list',   tier: 'starter', template: 'Ranking najlepszych miejsc z {specific_service} w {city} — top 5' },
+  { id: 'F3', category: 'F_local_list',   tier: 'pro',     template: 'Które {category} w {city} z {specific_service} są najlepiej oceniane? Podaj listę z uzasadnieniem' },
   { id: 'A1', category: 'A_discovery',    tier: 'free',    template: 'Polecisz dobry {category} w {city}?' },
   { id: 'A2', category: 'A_discovery',    tier: 'free',    template: 'Najlepszy {category} w {city} — co polecacie?' },
   { id: 'A3', category: 'A_discovery',    tier: 'free',    template: 'Czy znasz {brand}? Co to za firma?' },
@@ -65,6 +68,9 @@ export const LOCAL_PROMPTS_PL: Array<{ id: string; category: PromptCategory; tem
 
 // English (EN) for Local
 export const LOCAL_PROMPTS_EN: Array<{ id: string; category: PromptCategory; template: string; tier: 'free' | 'starter' | 'pro' }> = [
+  { id: 'F1', category: 'F_local_list',   tier: 'free',    template: 'Give me the 5 best {specific_service} in {city}' },
+  { id: 'F2', category: 'F_local_list',   tier: 'starter', template: 'Top 5 {specific_service} places in {city} — ranked list' },
+  { id: 'F3', category: 'F_local_list',   tier: 'pro',     template: 'Which {category} in {city} offering {specific_service} are highest rated? Give me a ranked list with reasons' },
   { id: 'A1', category: 'A_discovery',    tier: 'free',    template: 'Can you recommend a good {category} in {city}?' },
   { id: 'A2', category: 'A_discovery',    tier: 'free',    template: 'Best {category} in {city} — what do you suggest?' },
   { id: 'A3', category: 'A_discovery',    tier: 'free',    template: 'Do you know {brand}? What kind of business is it?' },
@@ -92,6 +98,9 @@ export const LOCAL_PROMPTS_EN: Array<{ id: string; category: PromptCategory; tem
 
 // German (DE) for Local
 export const LOCAL_PROMPTS_DE: Array<{ id: string; category: PromptCategory; template: string; tier: 'free' | 'starter' | 'pro' }> = [
+  { id: 'F1', category: 'F_local_list',   tier: 'free',    template: 'Nenn mir die 5 besten {specific_service} in {city}' },
+  { id: 'F2', category: 'F_local_list',   tier: 'starter', template: 'Ranking der besten {specific_service} in {city} — Top 5' },
+  { id: 'F3', category: 'F_local_list',   tier: 'pro',     template: 'Welche {category} in {city} mit {specific_service} sind am besten bewertet? Liste mit Begründung' },
   { id: 'A1', category: 'A_discovery',    tier: 'free',    template: 'Kannst du ein gutes {category} in {city} empfehlen?' },
   { id: 'A2', category: 'A_discovery',    tier: 'free',    template: 'Bestes {category} in {city} — was empfehlt ihr?' },
   { id: 'A3', category: 'A_discovery',    tier: 'free',    template: 'Kennst du {brand}? Was ist das für ein Geschäft?' },
@@ -119,6 +128,9 @@ export const LOCAL_PROMPTS_DE: Array<{ id: string; category: PromptCategory; tem
 
 // French (FR)
 export const LOCAL_PROMPTS_FR: Array<{ id: string; category: PromptCategory; template: string; tier: 'free' | 'starter' | 'pro' }> = [
+  { id: 'F1', category: 'F_local_list',   tier: 'free',    template: 'Donne-moi les 5 meilleurs {specific_service} à {city}' },
+  { id: 'F2', category: 'F_local_list',   tier: 'starter', template: 'Classement des meilleurs {specific_service} à {city} — top 5' },
+  { id: 'F3', category: 'F_local_list',   tier: 'pro',     template: 'Quels {category} à {city} proposant {specific_service} sont les mieux notés? Liste avec justification' },
   { id: 'A1', category: 'A_discovery',    tier: 'free',    template: 'Pouvez-vous recommander un bon {category} à {city}?' },
   { id: 'A2', category: 'A_discovery',    tier: 'free',    template: 'Meilleur {category} à {city} — qu\'est-ce que vous suggérez?' },
   { id: 'A3', category: 'A_discovery',    tier: 'free',    template: 'Connaissez-vous {brand}? Quel type d\'entreprise est-ce?' },
@@ -146,6 +158,9 @@ export const LOCAL_PROMPTS_FR: Array<{ id: string; category: PromptCategory; tem
 
 // Spanish (ES)
 export const LOCAL_PROMPTS_ES: Array<{ id: string; category: PromptCategory; template: string; tier: 'free' | 'starter' | 'pro' }> = [
+  { id: 'F1', category: 'F_local_list',   tier: 'free',    template: 'Dame los 5 mejores {specific_service} en {city}' },
+  { id: 'F2', category: 'F_local_list',   tier: 'starter', template: 'Ranking de los mejores {specific_service} en {city} — top 5' },
+  { id: 'F3', category: 'F_local_list',   tier: 'pro',     template: '¿Qué {category} en {city} con {specific_service} tienen mejor valoración? Lista con razones' },
   { id: 'A1', category: 'A_discovery',    tier: 'free',    template: '¿Puedes recomendar un buen {category} en {city}?' },
   { id: 'A2', category: 'A_discovery',    tier: 'free',    template: 'Mejor {category} en {city} — ¿qué sugieres?' },
   { id: 'A3', category: 'A_discovery',    tier: 'free',    template: '¿Conoces {brand}? ¿Qué tipo de negocio es?' },
@@ -173,6 +188,9 @@ export const LOCAL_PROMPTS_ES: Array<{ id: string; category: PromptCategory; tem
 
 // Portuguese (PT)
 export const LOCAL_PROMPTS_PT: Array<{ id: string; category: PromptCategory; template: string; tier: 'free' | 'starter' | 'pro' }> = [
+  { id: 'F1', category: 'F_local_list',   tier: 'free',    template: 'Dá-me os 5 melhores {specific_service} em {city}' },
+  { id: 'F2', category: 'F_local_list',   tier: 'starter', template: 'Ranking dos melhores {specific_service} em {city} — top 5' },
+  { id: 'F3', category: 'F_local_list',   tier: 'pro',     template: 'Quais {category} em {city} com {specific_service} são os mais bem avaliados? Lista com justificação' },
   { id: 'A1', category: 'A_discovery',    tier: 'free',    template: 'Pode recomendar um bom {category} em {city}?' },
   { id: 'A2', category: 'A_discovery',    tier: 'free',    template: 'Melhor {category} em {city} — o que sugerem?' },
   { id: 'A3', category: 'A_discovery',    tier: 'free',    template: 'Conhece {brand}? Que tipo de negócio é?' },
@@ -309,11 +327,14 @@ export function generateLocalPrompts(
   const hasCompetitor1 = !!(vars.competitor_1?.trim());
   const hasCompetitor2 = !!(vars.competitor_2?.trim());
 
+  const hasSpecificService = !!(vars.specific_service?.trim());
+
   const basePrompts = templates
     .filter(t => t.id !== 'K1' && t.id !== 'K2' && (allowedTiers as string[]).includes(t.tier))
     .filter(t => hasCity || !t.template.includes('{city}'))
     .filter(t => hasCompetitor1 || !t.template.includes('{competitor_1}'))
     .filter(t => hasCompetitor2 || !t.template.includes('{competitor_2}'))
+    .filter(t => hasSpecificService || !t.template.includes('{specific_service}'))
     .map(t => ({
       id: t.id,
       category: t.category,

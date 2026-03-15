@@ -184,6 +184,7 @@ export type PromptCategory =
   | 'C_comparison'
   | 'D_recommendation'
   | 'E_evaluation'
+  | 'F_local_list'   // local only: "give me top 5 X in Y" ranking queries
   | 'K_keyword';
 
 export interface PromptItem {
