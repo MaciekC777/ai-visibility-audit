@@ -1,4 +1,5 @@
 import * as cheerio from 'cheerio';
+import OpenAI from 'openai';
 import {
   BrandProfileSaaS,
   BrandProfileLocal,
@@ -9,8 +10,13 @@ import {
   VerifiableFact,
   PricingPlan,
   OpeningHours,
+  BrandKnowledgeMap,
+  RawScrapedData,
 } from '../types';
 import { logger } from '../utils/logger';
+import { env } from '../config/env';
+
+const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
 /** Try multiple URL slugs, return the first that responds with non-null HTML */
 async function fetchPageAny(baseUrl: string, slugs: string[]): Promise<string | null> {
@@ -35,6 +41,169 @@ export async function fetchPage(url: string, timeout = 10_000): Promise<string |
   } catch {
     return null;
   }
+}
+
+// ─── robots.txt bot check helper ─────────────────────────────────────────────
+
+function isBotAllowed(robotsTxt: string, botName: string): boolean {
+  if (!robotsTxt) return true;
+  const lines = robotsTxt.split('\n');
+  let inSection = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.toLowerCase().startsWith('user-agent:')) {
+      const agent = trimmed.split(':')[1]?.trim() ?? '';
+      inSection = agent === '*' || agent.toLowerCase() === botName.toLowerCase();
+    } else if (inSection && trimmed.toLowerCase().startsWith('disallow:')) {
+      const path = trimmed.split(':')[1]?.trim() ?? '';
+      if (path === '/' || path === '') return false;
+    } else if (trimmed === '' && inSection) {
+      inSection = false;
+    }
+  }
+  return true;
+}
+
+// ─── scrapeRawData ────────────────────────────────────────────────────────────
+
+export async function scrapeRawData(domain: string): Promise<RawScrapedData> {
+  const baseUrl = domain.startsWith('http') ? domain : `https://${domain}`;
+
+  // Fetch homepage
+  const homeHtml = await fetchPage(baseUrl);
+  const $ = cheerio.load(homeHtml ?? '');
+
+  // Extract meta tags from homepage
+  const homeMeta: Record<string, string> = {};
+  $('meta').each((_, el) => {
+    const name = $(el).attr('name') || $(el).attr('property');
+    const content = $(el).attr('content');
+    if (name && content) homeMeta[name] = content;
+  });
+
+  // Extract JSON-LD from homepage
+  const homeJsonld: any[] = [];
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try {
+      const parsed = JSON.parse($(el).html() ?? '');
+      if (Array.isArray(parsed)) homeJsonld.push(...parsed);
+      else homeJsonld.push(parsed);
+    } catch {}
+  });
+
+  const schemaTypes = homeJsonld.map(j => (j['@type'] as string) ?? '').filter(Boolean);
+  const hasOpengraph = $('meta[property^="og:"]').length > 0;
+
+  // Extract nav links
+  let navLinks: string[] = [];
+  $('nav a[href]').each((_, el) => {
+    const href = $(el).attr('href') ?? '';
+    if (href && (href.startsWith('/') || href.startsWith(baseUrl))) {
+      const full = href.startsWith('/') ? baseUrl + href : href;
+      navLinks.push(full);
+    }
+  });
+  // Fallback: all internal links
+  if (navLinks.length === 0) {
+    $('a[href]').each((_, el) => {
+      const href = $(el).attr('href') ?? '';
+      if (href && (href.startsWith('/') || href.startsWith(baseUrl))) {
+        const full = href.startsWith('/') ? baseUrl + href : href;
+        navLinks.push(full);
+      }
+    });
+  }
+  navLinks = [...new Set(navLinks)];
+
+  // Check technical signals
+  const sitemapHtml = await fetchPage(baseUrl + '/sitemap.xml');
+  const robotsTxt = await fetchPage(baseUrl + '/robots.txt') ?? '';
+  const llmsTxt = await fetchPage(baseUrl + '/llms.txt');
+
+  const hreflangTags: string[] = [];
+  $('link[rel="alternate"][hreflang]').each((_, el) => {
+    const href = $(el).attr('href');
+    if (href) hreflangTags.push(href);
+  });
+
+  const technical_signals: RawScrapedData['technical_signals'] = {
+    ssl: baseUrl.startsWith('https'),
+    sitemap_exists: sitemapHtml !== null,
+    robots_txt: robotsTxt,
+    gptbot_allowed: isBotAllowed(robotsTxt, 'GPTBot'),
+    claudebot_allowed: isBotAllowed(robotsTxt, 'ClaudeBot') && isBotAllowed(robotsTxt, 'anthropic-ai'),
+    perplexitybot_allowed: isBotAllowed(robotsTxt, 'PerplexityBot'),
+    google_extended_allowed: isBotAllowed(robotsTxt, 'Google-Extended'),
+    llms_txt_exists: llmsTxt !== null,
+    hreflang_tags: hreflangTags,
+    schema_types: schemaTypes,
+    has_opengraph: hasOpengraph,
+  };
+
+  // Select pages to fetch from nav links
+  const prioritySlugs = ['about', 'pricing', 'features', 'services', 'contact', 'blog', 'menu', 'portfolio', 'case-studies', 'team', 'faq', 'integrations', 'compare'];
+  const selectedLinks: string[] = [];
+  for (const slug of prioritySlugs) {
+    const match = navLinks.find(l => l.toLowerCase().includes(slug));
+    if (match && !selectedLinks.includes(match)) selectedLinks.push(match);
+    if (selectedLinks.length >= 10) break;
+  }
+  // Fill remaining slots with other nav links
+  for (const link of navLinks) {
+    if (selectedLinks.length >= 10) break;
+    if (!selectedLinks.includes(link)) selectedLinks.push(link);
+  }
+
+  // Fetch selected pages in parallel
+  const pageResults = await Promise.all(
+    selectedLinks.map(async (url) => {
+      const html = await fetchPage(url);
+      if (!html) return null;
+      const $p = cheerio.load(html);
+      // Remove noise
+      $p('script, style, nav, footer').remove();
+      // Convert headings
+      $p('h1').each((_, el) => { $p(el).replaceWith(`# H1: ${$p(el).text()}\n`); });
+      $p('h2').each((_, el) => { $p(el).replaceWith(`## H2: ${$p(el).text()}\n`); });
+      $p('h3').each((_, el) => { $p(el).replaceWith(`### H3: ${$p(el).text()}\n`); });
+      const text = ($p('body').text() ?? '').replace(/\s+/g, ' ').trim().slice(0, 12000);
+
+      const meta: Record<string, string> = {};
+      $p('meta').each((_, el) => {
+        const name = $p(el).attr('name') || $p(el).attr('property');
+        const content = $p(el).attr('content');
+        if (name && content) meta[name] = content;
+      });
+
+      const jsonld: any[] = [];
+      $p('script[type="application/ld+json"]').each((_, el) => {
+        try {
+          const parsed = JSON.parse($p(el).html() ?? '');
+          if (Array.isArray(parsed)) jsonld.push(...parsed);
+          else jsonld.push(parsed);
+        } catch {}
+      });
+
+      return { url, clean_text: text, meta, jsonld };
+    })
+  );
+
+  // Add homepage as first page
+  const homePageLoad = cheerio.load(homeHtml ?? '');
+  homePageLoad('script, style, nav, footer').remove();
+  const homeText = (homePageLoad('body').text() ?? '').replace(/\s+/g, ' ').trim().slice(0, 12000);
+
+  const pages: RawScrapedData['pages'] = [
+    { url: baseUrl, clean_text: homeText, meta: homeMeta, jsonld: homeJsonld },
+    ...pageResults.filter((p): p is NonNullable<typeof p> => p !== null),
+  ];
+
+  return {
+    domain,
+    pages,
+    nav_links: navLinks,
+    technical_signals,
+  };
 }
 
 // ─── Schema.org / JSON-LD extraction ─────────────────────────────────────────
@@ -607,26 +776,222 @@ export async function scrapeLocalBrandProfile(domain: string): Promise<BrandProf
 
 // ─── Unified scraper ──────────────────────────────────────────────────────────
 
-export async function scrapeBrandProfile(domain: string, businessMode: BusinessMode = 'saas'): Promise<BrandProfile> {
+export async function scrapeBrandProfileLegacy(domain: string, businessMode: BusinessMode = 'saas'): Promise<BrandProfile> {
   if (businessMode === 'local') {
     return scrapeLocalBrandProfile(domain);
   }
   return scrapeSaasBrandProfile(domain);
 }
 
+// ─── New scraper returning BrandKnowledgeMap ──────────────────────────────────
+
+export async function scrapeBrandProfile(domain: string, _businessMode?: string): Promise<BrandKnowledgeMap> {
+  const rawData = await scrapeRawData(domain);
+
+  // Build content string for LLM extraction
+  let content = rawData.pages.map(p =>
+    `=== PAGE: ${p.url} ===\n${p.clean_text}\nMeta: ${JSON.stringify(p.meta)}\nJSON-LD: ${JSON.stringify(p.jsonld)}\n\n`
+  ).join('').slice(0, 60000);
+
+  const brandKnowledgeMapTemplate = `{
+  "brand_name": "string",
+  "business_type": "saas|ecommerce|agency|local_business|restaurant|media|marketplace|nonprofit|other",
+  "one_liner": "string",
+  "category": "string",
+  "subcategories": ["string"],
+  "target_audience": ["string"],
+  "core_offerings": ["string"],
+  "key_features": ["string"],
+  "signature_items": ["string"],
+  "unique_selling_points": ["string"],
+  "associated_concepts": ["string"],
+  "typical_occasions": ["string"],
+  "target_customer_situations": ["string"],
+  "pricing": {
+    "model": "string",
+    "plans": [{ "name": "string", "price": "string", "highlights": ["string"] }],
+    "price_range": "string"
+  },
+  "location": {
+    "city": "string|null",
+    "region": "string|null",
+    "country": "string|null",
+    "neighborhood": "string|null",
+    "nearby_landmarks": ["string"],
+    "service_area": "string"
+  },
+  "competitors_from_website": ["string"],
+  "competitors_likely": ["string"],
+  "contact_info": {
+    "email": "string|null",
+    "phone": "string|null",
+    "address": "string|null",
+    "hours": "string|null"
+  },
+  "social_proof": {
+    "customer_count": "string|null",
+    "notable_customers": ["string"],
+    "awards_certifications": ["string"],
+    "review_platforms_mentioned": ["string"]
+  },
+  "integrations": ["string"],
+  "founding_year": "string|null",
+  "team_size_signal": "string",
+  "verifiable_facts": {
+    "pricing_details": ["string"],
+    "feature_claims": ["string"],
+    "metrics_claimed": ["string"],
+    "factual_details": ["string"],
+    "contact_details": ["string"]
+  }
+}`;
+
+  try {
+    const res = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'You extract structured brand information from website content. Use the website as PRIMARY source. Supplement with general knowledge only where website lacks detail. Return ONLY valid JSON, no markdown.',
+        },
+        {
+          role: 'user',
+          content: `Website content from ${domain}:\n\n${content}\n\nBased on this content, extract a comprehensive brand knowledge map. Return this exact JSON structure:\n${brandKnowledgeMapTemplate}`,
+        },
+      ],
+      max_tokens: 2000,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+    });
+
+    const raw = res.choices[0]?.message?.content ?? '{}';
+    return JSON.parse(raw) as BrandKnowledgeMap;
+  } catch (e) {
+    logger.error('BrandKnowledgeMap LLM extraction failed, using fallback', { error: e });
+    // Fallback: minimal BrandKnowledgeMap from raw data
+    const homePage = rawData.pages[0];
+    const brandName = homePage?.meta?.['og:site_name'] || homePage?.meta?.['og:title'] || domain.split('.')[0];
+    const description = homePage?.meta?.['description'] || homePage?.meta?.['og:description'] || '';
+    return {
+      brand_name: brandName,
+      business_type: 'other',
+      one_liner: description.slice(0, 200),
+      category: 'Business',
+      subcategories: [],
+      target_audience: [],
+      core_offerings: [],
+      key_features: [],
+      signature_items: [],
+      unique_selling_points: [],
+      associated_concepts: [],
+      typical_occasions: [],
+      target_customer_situations: [],
+      pricing: { model: '', plans: [], price_range: '' },
+      location: { city: null, region: null, country: null, neighborhood: null, nearby_landmarks: [], service_area: '' },
+      competitors_from_website: [],
+      competitors_likely: [],
+      contact_info: { email: null, phone: null, address: null, hours: null },
+      social_proof: { customer_count: null, notable_customers: [], awards_certifications: [], review_platforms_mentioned: [] },
+      integrations: [],
+      founding_year: null,
+      team_size_signal: '',
+      verifiable_facts: { pricing_details: [], feature_claims: [], metrics_claimed: [], factual_details: [], contact_details: [] },
+    };
+  }
+}
+
 // ─── Website Readiness Audit ──────────────────────────────────────────────────
 
 export async function analyzeWebsiteReadiness(
   domain: string,
-  businessMode: BusinessMode,
-  profile: BrandProfile
+  businessType: string,
+  profile: BrandKnowledgeMap | BrandProfile,
+  rawData?: RawScrapedData
 ): Promise<WebsiteReadiness> {
   const baseUrl = domain.startsWith('http') ? domain : `https://${domain}`;
 
-  if (businessMode === 'saas') {
+  // If profile is BrandKnowledgeMap (new pipeline) and rawData provided, use new logic
+  if (rawData && 'brand_name' in profile) {
+    return analyzeReadinessFromRawData(baseUrl, businessType, profile as BrandKnowledgeMap, rawData);
+  }
+
+  // Legacy: BrandProfile-based logic
+  if (businessType === 'saas') {
     return analyzeSaaSReadiness(baseUrl, profile as BrandProfileSaaS);
   }
   return analyzeLocalReadiness(baseUrl, profile as BrandProfileLocal);
+}
+
+async function analyzeReadinessFromRawData(
+  baseUrl: string,
+  businessType: string,
+  profile: BrandKnowledgeMap,
+  rawData: RawScrapedData
+): Promise<WebsiteReadiness> {
+  const checks: WebsiteReadinessCheck[] = [];
+  const sig = rawData.technical_signals;
+  const navLinks = rawData.nav_links.join(' ').toLowerCase();
+  const allText = rawData.pages.map(p => p.clean_text).join(' ').toLowerCase();
+
+  checks.push({ check: 'SSL/HTTPS', status: sig.ssl ? 'pass' : 'fail', importance: 'critical' });
+  checks.push({ check: 'Sitemap.xml', status: sig.sitemap_exists ? 'pass' : 'fail', importance: 'high' });
+  checks.push({ check: 'Schema.org markup', status: sig.schema_types.length > 0 ? 'pass' : 'fail', importance: 'high' });
+
+  const hasMeta = rawData.pages[0]?.meta?.['description'] || rawData.pages[0]?.meta?.['og:description'];
+  checks.push({ check: 'Meta description', status: hasMeta ? 'pass' : 'fail', importance: 'medium' });
+  checks.push({ check: 'Open Graph tags', status: sig.has_opengraph ? 'pass' : 'fail', importance: 'medium' });
+
+  const botsAllowed = sig.gptbot_allowed || sig.claudebot_allowed || sig.perplexitybot_allowed;
+  checks.push({
+    check: 'AI bots allowed',
+    status: botsAllowed ? 'pass' : 'fail',
+    importance: 'critical',
+    recommendation: botsAllowed ? undefined : 'Allow GPTBot, ClaudeBot, PerplexityBot in robots.txt',
+  });
+  checks.push({ check: 'llms.txt', status: sig.llms_txt_exists ? 'pass' : 'fail', importance: 'low' });
+  checks.push({ check: 'hreflang tags', status: sig.hreflang_tags.length > 0 ? 'pass' : 'fail', importance: 'low' });
+
+  // Business-type specific checks
+  if (businessType === 'saas') {
+    const hasPricing = navLinks.includes('pricing') || profile.pricing.plans.length > 0;
+    checks.push({ check: 'Pricing page', status: hasPricing ? 'pass' : 'fail', importance: 'high' });
+    const hasFaq = sig.schema_types.some(t => t === 'FAQPage') || navLinks.includes('faq');
+    checks.push({ check: 'FAQ section', status: hasFaq ? 'pass' : 'fail', importance: 'medium' });
+    const hasBlog = navLinks.includes('blog');
+    checks.push({ check: 'Blog/Resources', status: hasBlog ? 'pass' : 'fail', importance: 'medium' });
+    const hasAbout = navLinks.includes('about');
+    checks.push({ check: 'About page', status: hasAbout ? 'pass' : 'fail', importance: 'low' });
+    const hasFreeTrial = /free trial|start free|book demo|get demo/.test(allText);
+    checks.push({ check: 'Free trial / Demo CTA', status: hasFreeTrial ? 'pass' : 'fail', importance: 'high' });
+  } else if (businessType === 'ecommerce') {
+    const hasProductSchema = sig.schema_types.some(t => t === 'Product');
+    checks.push({ check: 'Product schema', status: hasProductSchema ? 'pass' : 'fail', importance: 'critical' });
+    const hasReturns = /returns|shipping|delivery/.test(navLinks);
+    checks.push({ check: 'Returns/Shipping page', status: hasReturns ? 'pass' : 'fail', importance: 'high' });
+    const hasReviews = sig.schema_types.some(t => t === 'Review' || t === 'AggregateRating');
+    checks.push({ check: 'Reviews/Ratings', status: hasReviews ? 'pass' : 'fail', importance: 'medium' });
+  } else if (businessType === 'agency') {
+    const hasCaseStudies = /case-studies|portfolio|work/.test(navLinks);
+    checks.push({ check: 'Case studies/Portfolio', status: hasCaseStudies ? 'pass' : 'fail', importance: 'high' });
+    const hasTeam = /team|about/.test(navLinks);
+    checks.push({ check: 'Team page', status: hasTeam ? 'pass' : 'fail', importance: 'medium' });
+    const hasTestimonials = allText.includes('testimonial') || sig.schema_types.some(t => t === 'Review');
+    checks.push({ check: 'Testimonials', status: hasTestimonials ? 'pass' : 'fail', importance: 'medium' });
+  } else if (businessType === 'local_business' || businessType === 'restaurant') {
+    const hasLocalSchema = sig.schema_types.some(t => t.includes('LocalBusiness') || t.includes('Restaurant'));
+    checks.push({ check: 'LocalBusiness schema', status: hasLocalSchema ? 'pass' : 'fail', importance: 'critical' });
+    const hasNap = !!(profile.contact_info.phone && profile.contact_info.address);
+    checks.push({ check: 'NAP (Name/Address/Phone)', status: hasNap ? 'pass' : 'fail', importance: 'high' });
+    const hasHours = profile.contact_info.hours !== null;
+    checks.push({ check: 'Opening hours', status: hasHours ? 'pass' : 'fail', importance: 'high' });
+    const hasGoogleBusiness = allText.includes('google.com/maps') || allText.includes('g.page');
+    checks.push({ check: 'Google Business link', status: hasGoogleBusiness ? 'pass' : 'fail', importance: 'medium' });
+  }
+
+  const weights: Record<string, number> = { critical: 3, high: 2, medium: 1.5, low: 1 };
+  const score = calculateWeightedScore(checks, weights);
+
+  return { mode: businessType, checks, score };
 }
 
 async function analyzeSaaSReadiness(baseUrl: string, profile: BrandProfileSaaS): Promise<WebsiteReadiness> {

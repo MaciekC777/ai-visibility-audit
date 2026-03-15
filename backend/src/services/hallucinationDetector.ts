@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { ModelResponse, BrandProfile, VerifiedClaim, ExtractedClaim, VerifiableFact } from '../types';
+import { ModelResponse, BrandProfile, VerifiedClaim, ExtractedClaim, VerifiableFact, ClaimForVerification } from '../types';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { LANGUAGE_NAMES } from '../config/constants';
@@ -148,8 +148,9 @@ Hours: ${JSON.stringify(profile.contact.opening_hours)}`;
 
 export async function detectHallucinations(
   responses: ModelResponse[],
-  profile: BrandProfile,
-  language: string = 'en'
+  profile: any,
+  language: string = 'en',
+  claims?: ClaimForVerification[]
 ): Promise<VerifiedClaim[]> {
   const brandName = profile.brand.name;
 

@@ -1,4 +1,4 @@
-import { ThirdPartyPresence, BusinessMode, PlanType } from '../types';
+import { ThirdPartyPresence, PlanType } from '../types';
 import {
   SAAS_PLATFORMS_BY_PLAN,
   LOCAL_PLATFORMS_BY_PLAN,
@@ -26,7 +26,7 @@ async function checkUrl(url: string): Promise<{ present: boolean; statusCode?: n
   }
 }
 
-function getRecommendation(platform: string, present: boolean, mode: BusinessMode): string {
+function getRecommendation(platform: string, present: boolean, mode: string): string {
   if (present) {
     if (platform === 'Google Business Profile') return 'Profile found — ensure it is complete with photos, hours, and regular posts';
     if (platform === 'G2' || platform === 'Capterra') return 'Listed — actively collect reviews to boost AI mention rate';
@@ -48,13 +48,13 @@ function getRecommendation(platform: string, present: boolean, mode: BusinessMod
 
 export async function checkThirdPartyPresence(
   domain: string,
-  businessMode: BusinessMode = 'saas',
+  businessMode: string = 'saas',
   plan: PlanType = 'free'
 ): Promise<ThirdPartyPresence[]> {
   const slug = domainToSlug(domain);
   const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
 
-  const platformList = businessMode === 'local'
+  const platformList = (businessMode === 'local' || businessMode === 'local_business' || businessMode === 'restaurant')
     ? LOCAL_PLATFORMS_BY_PLAN[plan]
     : SAAS_PLATFORMS_BY_PLAN[plan];
 

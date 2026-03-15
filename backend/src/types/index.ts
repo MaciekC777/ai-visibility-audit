@@ -188,9 +188,13 @@ export type PromptCategory =
   | 'K_keyword';
 
 export interface PromptItem {
-  id: string; // A1, A2, B1, ..., K1
-  category: PromptCategory;
+  id: string;
+  category?: PromptCategory;   // old-style category
+  promptCategory?: string;     // new-style category (discovery|factual|comparative|evaluation|practical)
   text: string;
+  prompt?: string;             // alias for text (new pipeline)
+  persona?: string;
+  test_intent?: string;
   language: Language;
 }
 
@@ -200,7 +204,7 @@ export interface ModelResponse {
   model: string;
   promptId: string;
   promptText: string;
-  promptCategory: PromptCategory;
+  promptCategory: string;  // accepts both old PromptCategory values and new category names
   response: string;
   sources_cited: string[];
   timestamp: string;
@@ -304,6 +308,7 @@ export interface SentimentResult {
   specific_criticism: string[];
   fabricated_opinions: boolean;
   fabricated_opinions_detail: string | null;
+  recommendation_stance?: 'recommended' | 'neutral' | 'discouraged';
 }
 
 // ─── Website Readiness ────────────────────────────────────────────────────────
@@ -317,7 +322,7 @@ export interface WebsiteReadinessCheck {
 }
 
 export interface WebsiteReadiness {
-  mode: BusinessMode;
+  mode: string;  // BusinessMode or business_type string
   checks: WebsiteReadinessCheck[];
   score: number; // 0-100 weighted
   // Legacy fields for backwards compat
@@ -423,4 +428,152 @@ export interface AuditInput {
   region: Region;
   language: Language;
   keywords?: string[];
+}
+
+// ─── New Universal Types (v2 pipeline) ───────────────────────────────────────
+
+export type BusinessType =
+  | 'saas'
+  | 'ecommerce'
+  | 'agency'
+  | 'local_business'
+  | 'restaurant'
+  | 'media'
+  | 'marketplace'
+  | 'nonprofit'
+  | 'other';
+
+export interface BrandKnowledgeMap {
+  brand_name: string;
+  business_type: BusinessType;
+  one_liner: string;
+  category: string;
+  subcategories: string[];
+  target_audience: string[];
+  core_offerings: string[];
+  key_features: string[];
+  signature_items: string[];
+  unique_selling_points: string[];
+  associated_concepts: string[];
+  typical_occasions: string[];
+  target_customer_situations: string[];
+  pricing: {
+    model: string;
+    plans: Array<{ name: string; price: string; highlights: string[] }>;
+    price_range: string;
+  };
+  location: {
+    city: string | null;
+    region: string | null;
+    country: string | null;
+    neighborhood: string | null;
+    nearby_landmarks: string[];
+    service_area: string;
+  };
+  competitors_from_website: string[];
+  competitors_likely: string[];
+  contact_info: {
+    email: string | null;
+    phone: string | null;
+    address: string | null;
+    hours: string | null;
+  };
+  social_proof: {
+    customer_count: string | null;
+    notable_customers: string[];
+    awards_certifications: string[];
+    review_platforms_mentioned: string[];
+  };
+  integrations: string[];
+  founding_year: string | null;
+  team_size_signal: string;
+  verifiable_facts: {
+    pricing_details: string[];
+    feature_claims: string[];
+    metrics_claimed: string[];
+    factual_details: string[];
+    contact_details: string[];
+  };
+}
+
+export interface RawScrapedData {
+  domain: string;
+  pages: Array<{
+    url: string;
+    clean_text: string;
+    meta: Record<string, string>;
+    jsonld: any[];
+  }>;
+  nav_links: string[];
+  technical_signals: {
+    ssl: boolean;
+    sitemap_exists: boolean;
+    robots_txt: string;
+    gptbot_allowed: boolean;
+    claudebot_allowed: boolean;
+    perplexitybot_allowed: boolean;
+    google_extended_allowed: boolean;
+    llms_txt_exists: boolean;
+    hreflang_tags: string[];
+    schema_types: string[];
+    has_opengraph: boolean;
+  };
+}
+
+export interface UnifiedResponseAnalysis {
+  promptId: string;
+  model: string;
+  category: string;
+  brand_mentioned: boolean;
+  brand_name_used: string | null;
+  visibility?: {
+    mention_type: 'recommended' | 'listed' | 'briefly_mentioned' | 'not_found';
+    position: number | null;
+    total_items: number | null;
+    context: string | null;
+  };
+  sentiment?: {
+    overall: 'positive' | 'neutral' | 'negative' | 'mixed';
+    strengths_mentioned: string[];
+    weaknesses_mentioned: string[];
+    recommendation_stance: 'recommended' | 'neutral' | 'discouraged';
+  };
+  competitors_in_response?: Array<{
+    name: string;
+    position: number | null;
+    sentiment: 'positive' | 'neutral' | 'negative';
+  }>;
+  positioning?: {
+    vs_competitor: string;
+    brand_advantage: string;
+    competitor_advantage: string;
+    ai_preference: 'brand' | 'competitor' | 'neutral';
+  };
+  claims?: Array<{
+    statement: string;
+    type: string;
+    confidence: 'stated_as_fact' | 'hedged' | 'speculative';
+  }>;
+}
+
+export interface ClaimForVerification {
+  statement: string;
+  type: string;
+  confidence: string;
+  source_model: string;
+  source_prompt_id: string;
+}
+
+export interface AggregatedResults {
+  visibilityAnalysis: VisibilityAnalysis;
+  sentimentResults: SentimentResult[];
+  competitors: Competitor[];
+  claims: ClaimForVerification[];
+}
+
+export interface NewAuditScores extends AuditScores {
+  reputationScore: number | null;
+  shareOfVoice: number;
+  competitiveRank: number;
+  overallScore: number;
 }

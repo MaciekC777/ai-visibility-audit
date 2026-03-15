@@ -1,6 +1,5 @@
 import OpenAI from 'openai';
 import {
-  BrandProfile,
   BrandProfileSaaS,
   BrandProfileLocal,
   PromptItem,
@@ -104,7 +103,7 @@ interface RawSmartPrompt {
 }
 
 async function generateSmartPrompts(
-  profile: BrandProfile,
+  profile: any,
   count: number,
   language: Language,
   keywords: string[],
@@ -243,11 +242,12 @@ function buildLocalVars(profile: BrandProfileLocal, language: Language): PromptG
 // ─── Main prompt generator ────────────────────────────────────────────────────
 
 export async function generatePrompts(
-  profile: BrandProfile,
+  profile: any,
   plan: PlanType,
   language: Language,
   region: string,
-  keywords: string[] = []
+  keywords: string[] = [],
+  seedCompetitors: string[] = []
 ): Promise<PromptItem[]> {
   const count = PLAN_LIMITS[plan].promptsPerAudit;
 

@@ -4,6 +4,7 @@ import {
   SentimentResult,
   Competitor,
   AuditScores,
+  NewAuditScores,
 } from '../types';
 
 // ─── Visibility Score (0-100) ─────────────────────────────────────────────────
@@ -106,6 +107,50 @@ export function calculateMarketRank(
   return brandsAhead + 1;
 }
 
+// ─── Reputation Score (0-100 or null) ────────────────────────────────────────
+
+export function calculateReputationScore(sentiments: SentimentResult[]): number | null {
+  const withStance = sentiments.filter(s => (s as any).recommendation_stance);
+  const nonNeutral = sentiments.filter(s => s.overall_sentiment !== 'neutral');
+  if (nonNeutral.length === 0) return null;
+  const positive = nonNeutral.filter(s => s.overall_sentiment === 'positive').length;
+  const positive_ratio = positive / nonNeutral.length;
+  const base = positive_ratio * 80;
+  const allPraise = sentiments.flatMap(s => s.specific_praise);
+  const allCriticism = sentiments.flatMap(s => s.specific_criticism);
+  const strength_bonus = Math.min(new Set(allPraise).size * 2, 10);
+  const weakness_penalty = Math.min(new Set(allCriticism).size * 2, 10);
+  const recTotal = withStance.length;
+  const recCount = withStance.filter(s => (s as any).recommendation_stance === 'recommended').length;
+  const recommendation_bonus = recTotal > 0 ? (recCount / recTotal) * 10 : 0;
+  return Math.max(0, Math.min(100, Math.round(base + strength_bonus - weakness_penalty + recommendation_bonus)));
+}
+
+// ─── Share of Voice (0-100) ───────────────────────────────────────────────────
+
+export function calculateShareOfVoice(competitors: Competitor[], brandTotalMentions: number): number {
+  const total = competitors.reduce((sum, c) => sum + c.total_mentions, 0) + brandTotalMentions;
+  if (total === 0) return 0;
+  return Math.round((brandTotalMentions / total) * 100);
+}
+
+// ─── Overall Score (0-100) ────────────────────────────────────────────────────
+
+export function calculateOverallScore(
+  visibility: number,
+  accuracy: number | null,
+  reputation: number | null,
+  shareOfVoice: number
+): number {
+  let total = 0;
+  let weights = 0;
+  total += visibility * 0.35; weights += 0.35;
+  if (accuracy !== null) { total += accuracy * 0.25; weights += 0.25; }
+  if (reputation !== null) { total += reputation * 0.25; weights += 0.25; }
+  total += shareOfVoice * 0.15; weights += 0.15;
+  return Math.round(total / weights);
+}
+
 // ─── All scores ───────────────────────────────────────────────────────────────
 
 export function calculateAllScores(
@@ -114,12 +159,15 @@ export function calculateAllScores(
   sentiments: SentimentResult[],
   competitors: Competitor[],
   brandTotalMentions: number
-): AuditScores {
+): NewAuditScores {
   const visibilityScore = calculateVisibilityScore(visibilityAnalysis, sentiments);
   const accuracyScore = calculateAccuracyScore(claims);
   const compositeScore = calculateCompositeScore(visibilityScore, accuracyScore);
   const perceptionScore = calculatePerceptionScore(sentiments);
   const marketRank = calculateMarketRank(competitors, brandTotalMentions);
+  const reputationScore = calculateReputationScore(sentiments);
+  const shareOfVoice = calculateShareOfVoice(competitors, brandTotalMentions);
+  const overallScore = calculateOverallScore(visibilityScore, accuracyScore, reputationScore, shareOfVoice);
 
-  return { visibilityScore, accuracyScore, compositeScore, perceptionScore, marketRank };
+  return { visibilityScore, accuracyScore, compositeScore, perceptionScore, marketRank, reputationScore, shareOfVoice, competitiveRank: marketRank, overallScore };
 }
