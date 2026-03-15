@@ -12,7 +12,7 @@ const router = Router();
 
 const createAuditSchema = z.object({
   domain: z.string().min(3).max(255),
-  businessMode: z.enum(['saas', 'local']).default('saas'),
+  businessMode: z.enum(['saas', 'local']).optional(),
   region: z.enum(['global', 'germany', 'france', 'spain', 'poland', 'portugal']).default('global'),
   language: z.enum(['en', 'de', 'fr', 'es', 'pl', 'pt']).optional(),
   keywords: z.array(z.string().max(80)).max(10).optional(),
@@ -104,7 +104,7 @@ router.post('/', async (req: Request, res: Response) => {
     auditId: audit.id,
     domain: cleanDomain,
     plan,
-    businessMode: businessMode as BusinessMode,
+    businessMode: (businessMode ?? 'saas') as BusinessMode,
     region: region as Region,
     language: resolvedLanguage,
     keywords: allKeywords,
