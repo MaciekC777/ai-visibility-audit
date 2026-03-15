@@ -77,7 +77,7 @@ function buildSaaSContext(profile: BrandProfileSaaS): string {
   return lines.join('\n');
 }
 
-function buildLocalContext(profile: BrandProfileLocal): string {
+function buildLocalContext(profile: any): string {
   const lines: string[] = [
     `Name: ${profile.brand.name}`,
     `Category: ${profile.brand.category}`,
@@ -86,9 +86,10 @@ function buildLocalContext(profile: BrandProfileLocal): string {
   if (profile.brand.description) lines.push(`Description: ${profile.brand.description.slice(0, 300)}`);
   if (profile.location.city) lines.push(`City: ${profile.location.city}`);
   if (profile.location.region) lines.push(`District/Region: ${profile.location.region}`);
-  if (profile.services.primary.length) lines.push(`Primary services: ${profile.services.primary.slice(0, 5).join(', ')}`);
-  if (profile.services.specialties?.length) lines.push(`Specialties: ${profile.services.specialties.slice(0, 4).join(', ')}`);
-  if (profile.pricing?.sample_prices?.length) lines.push(`Sample prices: ${profile.pricing.sample_prices.slice(0, 3).map(p => `${p.item} ${p.price}`).join(', ')}`);
+  if (profile.services?.primary?.length) lines.push(`Primary services: ${profile.services.primary.slice(0, 5).join(', ')}`);
+  else if (profile.core_offerings?.length) lines.push(`Primary services: ${profile.core_offerings.slice(0, 5).join(', ')}`);
+  if (profile.services?.specialties?.length) lines.push(`Specialties: ${profile.services.specialties.slice(0, 4).join(', ')}`);
+  if (profile.pricing?.sample_prices?.length) lines.push(`Sample prices: ${profile.pricing.sample_prices.slice(0, 3).map((p: any) => `${p.item} ${p.price}`).join(', ')}`);
   const competitors = [...(profile.competitors?.local ?? []), ...(profile.competitors?.chains ?? [])].slice(0, 3);
   if (competitors.length) lines.push(`Known local competitors: ${competitors.join(', ')}`);
   return lines.join('\n');
@@ -214,12 +215,12 @@ function buildSaaSVars(profile: BrandProfileSaaS, language: Language): PromptGen
   };
 }
 
-function buildLocalVars(profile: BrandProfileLocal, language: Language): PromptGenVars {
+function buildLocalVars(profile: any, language: Language): PromptGenVars {
   const competitor1 = profile.competitors?.local?.[0] ?? profile.competitors?.chains?.[0] ?? '';
   const competitor2 = profile.competitors?.local?.[1] ?? profile.competitors?.chains?.[1] ?? '';
-  const service1 = profile.services.primary[0] ?? profile.brand.category;
-  const service2 = profile.services.primary[1] ?? profile.services.secondary[0] ?? service1;
-  const specialty = profile.services.specialties[0] ?? service1;
+  const service1 = profile.services?.primary?.[0] ?? profile.core_offerings?.[0] ?? profile.brand?.category ?? '';
+  const service2 = profile.services?.primary?.[1] ?? profile.services?.secondary?.[0] ?? profile.core_offerings?.[1] ?? service1;
+  const specialty = profile.services?.specialties?.[0] ?? profile.signature_items?.[0] ?? service1;
   const sampleService = profile.pricing?.sample_prices?.[0]?.item ?? service1;
   const city = profile.location.city || profile.market?.service_area || '';
 

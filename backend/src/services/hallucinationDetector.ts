@@ -125,13 +125,13 @@ Return ONLY claims where verdict is NOT "correct". Return JSON array.`;
   }
 }
 
-function buildProfileSummary(profile: BrandProfile): string {
+function buildProfileSummary(profile: any): string {
   if (profile.mode === 'saas') {
     return `Brand: ${profile.brand.name}
 Category: ${profile.brand.category}
 Description: ${profile.brand.description}
 Founded: ${profile.brand.founded_year ?? 'unknown'}
-Pricing: ${profile.pricing.plans.map(p => `${p.name}: ${p.price}`).join(', ')}
+Pricing: ${(profile.pricing?.plans ?? []).map((p: any) => `${p.name}: ${p.price}`).join(', ')}
 Core features: ${profile.features.core.slice(0, 5).join(', ')}
 Free trial: ${profile.pricing.free_trial}`;
   } else {
@@ -139,8 +139,8 @@ Free trial: ${profile.pricing.free_trial}`;
 Category: ${profile.brand.category}
 Address: ${profile.location.address}, ${profile.location.city}
 Phone: ${profile.contact.phone}
-Services: ${profile.services.primary.slice(0, 5).join(', ')}
-Hours: ${JSON.stringify(profile.contact.opening_hours)}`;
+Services: ${(profile.services?.primary ?? profile.core_offerings ?? []).slice(0, 5).join(', ')}
+Hours: ${JSON.stringify(profile.contact?.opening_hours ?? profile.contact_info?.hours ?? {})}`;
   }
 }
 
