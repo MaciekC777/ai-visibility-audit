@@ -239,6 +239,7 @@ export interface VisibilityAnalysis {
   mentionsByModel: Record<string, number>;
   mentionsByCategory: Record<string, number>;
   promptMentions: PromptMentionResult[];
+  allPromptMentions: PromptMentionResult[]; // all categories, for competitor extraction
 }
 
 // ─── Source Analysis ──────────────────────────────────────────────────────────

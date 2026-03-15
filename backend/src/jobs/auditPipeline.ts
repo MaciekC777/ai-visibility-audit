@@ -118,8 +118,14 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
     const sentiments = await analyzeSentiment(responses, profile.brand.name, language);
     await saveResult(auditId, 'sentiment', sentiments);
 
-    // Competitor mapping
-    const competitors = extractCompetitors(responses, profile.brand.name, visibilityAnalysis.promptMentions);
+    // Competitor mapping (use all prompt mentions + seed from Perplexity search)
+    const seedCompetitors = competitorSearch.competitors.map((c: { name: string }) => c.name);
+    const competitors = extractCompetitors(
+      responses,
+      profile.brand.name,
+      visibilityAnalysis.allPromptMentions,
+      seedCompetitors
+    );
     await saveResult(auditId, 'competitors', competitors);
 
     // Source analysis
