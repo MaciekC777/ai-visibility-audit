@@ -219,9 +219,9 @@ export function aggregateAnalysis(
   // Position score
   const positionScores: number[] = [];
   for (const a of analyses) {
-    if (a.brand_mentioned && a.visibility?.position !== null && a.visibility?.total_items !== null) {
-      const pos = a.visibility!.position!;
-      const total = a.visibility!.total_items!;
+    if (a.brand_mentioned && a.visibility != null && a.visibility.position != null && a.visibility.total_items != null) {
+      const pos = a.visibility.position;
+      const total = a.visibility.total_items;
       if (total > 0) {
         positionScores.push(1 - (pos - 1) / total);
       }
