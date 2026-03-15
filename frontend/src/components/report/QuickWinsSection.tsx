@@ -1,11 +1,14 @@
 import { Recommendation } from '@/types';
 import { Badge } from '@/components/ui/Badge';
+import { getT } from '@/lib/reportTranslations';
 
 interface QuickWinsSectionProps {
   recommendations?: Recommendation[];
+  language?: string;
 }
 
-export function QuickWinsSection({ recommendations }: QuickWinsSectionProps) {
+export function QuickWinsSection({ recommendations, language }: QuickWinsSectionProps) {
+  const t = getT(language);
   const quickWins = recommendations?.filter(
     (r) => r.priority === 'critical' || r.priority === 'high'
   ).slice(0, 3) ?? [];
@@ -14,8 +17,8 @@ export function QuickWinsSection({ recommendations }: QuickWinsSectionProps) {
 
   return (
     <section id="quick-wins" className="scroll-mt-24">
-      <h2 className="text-2xl font-display font-bold text-gray-900 mb-1">Do this today</h2>
-      <p className="text-sm text-gray-400 mb-6">Highest-impact actions to improve your AI visibility score</p>
+      <h2 className="text-2xl font-display font-bold text-gray-900 mb-1">{t.doThisToday}</h2>
+      <p className="text-sm text-gray-400 mb-6">{t.highestImpactActions}</p>
       <div className="space-y-4">
         {quickWins.map((r, i) => (
           <div key={i} className="flex gap-4 p-5 bg-amber-50 border border-amber-200 rounded-xl">
@@ -31,7 +34,7 @@ export function QuickWinsSection({ recommendations }: QuickWinsSectionProps) {
               </div>
               <p className="text-sm text-gray-600">{r.description}</p>
               <div className="flex gap-3 mt-2 text-xs text-gray-400">
-                <span>Effort: {r.effort?.replace(/_/g, ' ')}</span>
+                <span>{t.effort}{r.effort?.replace(/_/g, ' ')}</span>
               </div>
             </div>
           </div>

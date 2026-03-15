@@ -3,17 +3,19 @@
 import { BrandProfile, BrandProfileSaaS, WebsiteReadiness, ThirdPartyPresence } from '@/types';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { getT, ReportTranslations } from '@/lib/reportTranslations';
 
 interface GeoReadinessSectionProps {
   brandProfile?: BrandProfile;
   websiteReadiness?: WebsiteReadiness;
   thirdParty?: ThirdPartyPresence[];
+  language?: string;
 }
 
 interface GeoCategory {
   title: string;
   description: string;
-  score: number; // 0–100
+  score: number;
   items: { label: string; status: 'pass' | 'partial' | 'fail'; detail?: string }[];
 }
 
@@ -40,6 +42,7 @@ function buildCategories(
   brandProfile: BrandProfile | undefined,
   websiteReadiness: WebsiteReadiness | undefined,
   thirdParty: ThirdPartyPresence[],
+  t: ReportTranslations,
 ): GeoCategory[] {
   const meta = brandProfile?.website_meta;
   const checks = websiteReadiness?.checks ?? [];
@@ -55,9 +58,9 @@ function buildCategories(
   if (meta && 'ai_bots_allowed' in meta) {
     const allowed = (meta as BrandProfileSaaS['website_meta']).ai_bots_allowed;
     crawlerItems.push({
-      label: 'AI bots access (robots.txt)',
+      label: t.aiBotsAccess,
       status: allowed === 'allowed' ? 'pass' : allowed === 'partial' ? 'partial' : 'fail',
-      detail: allowed === 'allowed' ? 'AI crawlers not blocked' : allowed === 'partial' ? 'Some AI bots blocked' : 'AI crawlers blocked or unknown',
+      detail: allowed === 'allowed' ? t.aiCrawlersNotBlocked : allowed === 'partial' ? t.someAIBotsBlocked : t.aiCrawlersBlocked,
     });
   }
 
@@ -69,14 +72,14 @@ function buildCategories(
   if (meta && 'has_llms_txt' in meta) {
     const hasLlms = (meta as BrandProfileSaaS['website_meta']).has_llms_txt;
     crawlerItems.push({
-      label: 'llms.txt file',
+      label: t.llmsTxt,
       status: hasLlms ? 'pass' : 'fail',
-      detail: hasLlms ? 'AI models can read brand context directly' : 'Missing — AI has no direct brand context file',
+      detail: hasLlms ? t.llmsTxtPresent : t.llmsTxtMissing,
     });
   }
 
   const llmsCheck = findCheck('llms.txt');
-  if (llmsCheck && !crawlerItems.find(i => i.label === 'llms.txt file')) {
+  if (llmsCheck && !crawlerItems.find(i => i.label === t.llmsTxt)) {
     crawlerItems.push({ label: llmsCheck.check, status: llmsCheck.status, detail: llmsCheck.detail });
   }
 
@@ -86,16 +89,16 @@ function buildCategories(
   if (meta && 'has_sitemap' in meta) {
     const hasSitemap = (meta as BrandProfileSaaS['website_meta']).has_sitemap;
     discoverabilityItems.push({
-      label: 'XML sitemap',
+      label: t.xmlSitemap,
       status: hasSitemap ? 'pass' : 'fail',
-      detail: hasSitemap ? 'Sitemap detected' : 'No sitemap found — crawlers may miss pages',
+      detail: hasSitemap ? t.sitemapDetected : t.noSitemap,
     });
   }
 
   discoverabilityItems.push({
-    label: 'Schema.org markup',
+    label: t.schemaOrgMarkup,
     status: meta?.has_schema_org ? 'pass' : 'fail',
-    detail: meta?.has_schema_org ? 'Structured data present' : 'No schema markup — AI cannot parse entities',
+    detail: meta?.has_schema_org ? t.structuredDataPresent : t.noSchemaMarkup,
   });
 
   const sslCheck = findCheck('SSL') || findCheck('HTTPS');
@@ -103,48 +106,45 @@ function buildCategories(
     discoverabilityItems.push({ label: sslCheck.check, status: sslCheck.status, detail: sslCheck.detail });
   } else if (meta?.ssl !== undefined) {
     discoverabilityItems.push({
-      label: 'HTTPS / SSL',
+      label: t.httpsSsl,
       status: meta.ssl ? 'pass' : 'fail',
-      detail: meta.ssl ? 'Secure connection' : 'No SSL — affects trust signals',
+      detail: meta.ssl ? t.secureConnection : t.noSSL,
     });
   }
 
   // 3. Schema Markup Quality
   const schemaItems: GeoCategory['items'] = [];
-
   const schemaTypes = saasProfile?.website_meta.schema_types_found ?? [];
   const localMeta = !isSaaS ? (meta as { has_local_business_schema?: boolean } | undefined) : null;
 
   schemaItems.push({
-    label: 'Schema.org types found',
+    label: t.schemaTypesFound,
     status: schemaTypes.length >= 3 ? 'pass' : schemaTypes.length >= 1 ? 'partial' : 'fail',
-    detail: schemaTypes.length > 0 ? schemaTypes.slice(0, 5).join(', ') : 'No schema types detected',
+    detail: schemaTypes.length > 0 ? schemaTypes.slice(0, 5).join(', ') : t.noSchemaTypes,
   });
 
   if (!isSaaS && localMeta) {
     schemaItems.push({
-      label: 'LocalBusiness schema',
+      label: t.localBusinessSchema,
       status: localMeta.has_local_business_schema ? 'pass' : 'fail',
-      detail: localMeta.has_local_business_schema
-        ? 'LocalBusiness schema present'
-        : 'Missing — critical for local AI visibility',
+      detail: localMeta.has_local_business_schema ? t.localBusinessSchemaPresent : t.localBusinessSchemaMissing,
     });
   }
 
   if (isSaaS) {
     const orgSchema = schemaTypes.includes('Organization') || schemaTypes.includes('SoftwareApplication');
     schemaItems.push({
-      label: 'Organization / Product schema',
+      label: t.orgProductSchema,
       status: orgSchema ? 'pass' : 'fail',
-      detail: orgSchema ? 'Found in schema types' : 'Add Organization or SoftwareApplication schema',
+      detail: orgSchema ? t.orgSchemaFound : t.orgSchemaAdd,
     });
   }
 
   const faqSchema = schemaTypes.includes('FAQPage') || schemaTypes.includes('FAQ');
   schemaItems.push({
-    label: 'FAQ schema',
+    label: t.faqSchema,
     status: faqSchema ? 'pass' : 'fail',
-    detail: faqSchema ? 'FAQ schema present' : 'Add FAQPage schema for Q&A visibility',
+    detail: faqSchema ? t.faqSchemaPresent : t.faqSchemaAdd,
   });
 
   // 4. Content Extractability
@@ -152,28 +152,26 @@ function buildCategories(
 
   if (meta && 'has_faq' in meta) {
     contentItems.push({
-      label: 'FAQ / Q&A content',
+      label: t.faqContent,
       status: meta.has_faq ? 'pass' : 'fail',
-      detail: meta.has_faq ? 'FAQ section detected' : 'No FAQ — AI models extract from Q&A structures',
+      detail: meta.has_faq ? t.faqDetected : t.noFaq,
     });
   }
 
   if (isSaaS && saasProfile) {
     contentItems.push({
-      label: 'Pricing page',
+      label: t.pricingPage,
       status: saasProfile.website_meta.has_pricing_page ? 'pass' : 'fail',
-      detail: saasProfile.website_meta.has_pricing_page
-        ? 'Pricing information accessible'
-        : 'No pricing page — AI cannot answer pricing queries',
+      detail: saasProfile.website_meta.has_pricing_page ? t.pricingAccessible : t.noPricingPage,
     });
   }
 
   if (!isSaaS && localMeta && 'nap_consistent' in (localMeta ?? {})) {
     const nap = (localMeta as { nap_consistent?: boolean }).nap_consistent;
     contentItems.push({
-      label: 'NAP consistency (Name, Address, Phone)',
+      label: t.napConsistency,
       status: nap ? 'pass' : 'fail',
-      detail: nap ? 'Name, address, phone consistent' : 'Inconsistent NAP hurts local AI responses',
+      detail: nap ? t.napConsistent : t.napInconsistent,
     });
   }
 
@@ -194,40 +192,41 @@ function buildCategories(
   const missingPlatforms = thirdParty.filter(p => p.status === 'missing');
 
   eeatItems.push({
-    label: 'Third-party listings',
+    label: t.thirdPartyListings,
     status: presentPlatforms.length >= 3 ? 'pass' : presentPlatforms.length >= 1 ? 'partial' : 'fail',
     detail: presentPlatforms.length > 0
-      ? `Present on: ${presentPlatforms.slice(0, 4).map(p => p.platform).join(', ')}`
-      : `Not found on ${missingPlatforms.slice(0, 3).map(p => p.platform).join(', ')}`,
+      ? `${t.presentOn}${presentPlatforms.slice(0, 4).map(p => p.platform).join(', ')}`
+      : `${t.notFoundOn}${missingPlatforms.slice(0, 3).map(p => p.platform).join(', ')}`,
   });
 
   const ratingPlatforms = thirdParty.filter(p => p.rating && p.rating > 0);
   eeatItems.push({
-    label: 'Reviews & ratings',
+    label: t.reviewsRatings,
     status: ratingPlatforms.length > 0 ? 'pass' : missingPlatforms.length > 0 ? 'fail' : 'partial',
     detail: ratingPlatforms.length > 0
       ? ratingPlatforms.map(p => `${p.platform}: ${p.rating}★`).join(', ')
-      : 'No verified ratings found on tracked platforms',
+      : t.noRatings,
   });
 
   const hasAboutCheck = findCheck('About page') || findCheck('About');
   eeatItems.push({
-    label: 'About / Author content',
+    label: t.aboutContent,
     status: hasAboutCheck ? hasAboutCheck.status : 'partial',
     detail: hasAboutCheck?.detail ?? 'About page presence supports expertise signals',
   });
 
   return [
-    { title: 'AI Crawler Access', description: 'Can AI bots read and index your site?', score: 0, items: crawlerItems },
-    { title: 'AI Discoverability', description: 'How well can AI find and understand your brand?', score: 0, items: discoverabilityItems },
-    { title: 'Schema Markup Quality', description: 'Structured data AI models rely on for entities', score: 0, items: schemaItems },
-    { title: 'Content Extractability', description: 'Can AI extract key facts, pricing, and Q&A?', score: 0, items: contentItems },
-    { title: 'E-E-A-T Signals', description: 'Experience, Expertise, Authority, Trust signals', score: 0, items: eeatItems },
+    { title: t.aiCrawlerAccess, description: t.aiCrawlerAccessDesc, score: 0, items: crawlerItems },
+    { title: t.aiDiscoverability, description: t.aiDiscoverabilityDesc, score: 0, items: discoverabilityItems },
+    { title: t.schemaMarkupQuality, description: t.schemaMarkupQualityDesc, score: 0, items: schemaItems },
+    { title: t.contentExtractability, description: t.contentExtractabilityDesc, score: 0, items: contentItems },
+    { title: t.eeatSignals, description: t.eeatDesc, score: 0, items: eeatItems },
   ].map(cat => ({ ...cat, score: categoryScore(cat.items) }));
 }
 
-export function GeoReadinessSection({ brandProfile, websiteReadiness, thirdParty = [] }: GeoReadinessSectionProps) {
-  const categories = buildCategories(brandProfile, websiteReadiness, thirdParty);
+export function GeoReadinessSection({ brandProfile, websiteReadiness, thirdParty = [], language }: GeoReadinessSectionProps) {
+  const t = getT(language);
+  const categories = buildCategories(brandProfile, websiteReadiness, thirdParty, t);
   const overallScore = categories.length > 0
     ? Math.round(categories.reduce((s, c) => s + c.score, 0) / categories.length)
     : 0;
@@ -236,16 +235,14 @@ export function GeoReadinessSection({ brandProfile, websiteReadiness, thirdParty
     <section id="geo-readiness" className="scroll-mt-24 space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-2xl font-display font-bold text-gray-900">GEO Readiness Audit</h2>
-          <p className="text-sm text-gray-400 mt-1">
-            Generative Engine Optimization — how ready is your site for AI-powered search
-          </p>
+          <h2 className="text-2xl font-display font-bold text-gray-900">{t.geoReadinessAudit}</h2>
+          <p className="text-sm text-gray-400 mt-1">{t.geoSubtitle}</p>
         </div>
         <div className="text-center shrink-0">
           <div className={`text-4xl font-bold ${overallScore >= 70 ? 'text-green-600' : overallScore >= 45 ? 'text-yellow-600' : 'text-red-600'}`}>
             {overallScore}
           </div>
-          <div className="text-xs text-gray-400">GEO Score</div>
+          <div className="text-xs text-gray-400">{t.geoScore}</div>
         </div>
       </div>
 
@@ -262,7 +259,7 @@ export function GeoReadinessSection({ brandProfile, websiteReadiness, thirdParty
               </div>
 
               {cat.items.length === 0 ? (
-                <p className="text-xs text-gray-400 italic">No data available</p>
+                <p className="text-xs text-gray-400 italic">{t.noData}</p>
               ) : (
                 <div className="space-y-2">
                   {cat.items.map((item, i) => (

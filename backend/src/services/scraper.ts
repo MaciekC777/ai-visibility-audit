@@ -12,6 +12,15 @@ import {
 } from '../types';
 import { logger } from '../utils/logger';
 
+/** Try multiple URL slugs, return the first that responds with non-null HTML */
+async function fetchPageAny(baseUrl: string, slugs: string[]): Promise<string | null> {
+  for (const slug of slugs) {
+    const html = await fetchPage(`${baseUrl}${slug}`);
+    if (html) return html;
+  }
+  return null;
+}
+
 export async function fetchPage(url: string, timeout = 10_000): Promise<string | null> {
   try {
     const res = await fetch(url, {
@@ -84,13 +93,22 @@ export async function scrapeSaasBrandProfile(domain: string): Promise<BrandProfi
   const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
 
   // Fetch all pages in parallel
-  const [homeHtml, aboutHtml, pricingHtml, featuresHtml, llmsTxt, sitemapXml] = await Promise.all([
+  const [
+    homeHtml, aboutHtml, pricingHtml, featuresHtml, llmsTxt, sitemapXml,
+    blogHtml, caseStudiesHtml, compareHtml, pressHtml, contactHtml,
+  ] = await Promise.all([
     fetchPage(`${baseUrl}/`),
     fetchPage(`${baseUrl}/about`),
     fetchPage(`${baseUrl}/pricing`),
     fetchPage(`${baseUrl}/features`),
     fetchPage(`${baseUrl}/llms.txt`),
     fetchPage(`${baseUrl}/sitemap.xml`),
+    // Extended checklist pages — try primary slug first, fallback via HEAD
+    fetchPageAny(baseUrl, ['/blog', '/news', '/resources', '/articles', '/insights']),
+    fetchPageAny(baseUrl, ['/case-studies', '/customers', '/success-stories', '/stories']),
+    fetchPageAny(baseUrl, ['/compare', '/alternatives', '/vs', '/comparison']),
+    fetchPageAny(baseUrl, ['/press', '/media', '/newsroom', '/press-releases']),
+    fetchPage(`${baseUrl}/contact`),
   ]);
 
   const $ = cheerio.load(homeHtml ?? '');
@@ -193,8 +211,19 @@ export async function scrapeSaasBrandProfile(domain: string): Promise<BrandProfi
 
   // Website meta
   const ssl = baseUrl.startsWith('https://');
-  const hasFaq = (homeHtml ?? '').toLowerCase().includes('faq') ||
-    (homeHtml ?? '').toLowerCase().includes('frequently asked');
+  const homeText = (homeHtml ?? '').toLowerCase();
+  const hasFaq = homeText.includes('faq') || homeText.includes('frequently asked');
+
+  // Extended signals for checklist evaluation
+  const hasOpenGraph = !!$('meta[property="og:title"]').attr('content');
+  const hasHreflang = $('link[rel="alternate"][hreflang]').length > 0;
+  const hasCanonical = !!$('link[rel="canonical"]').attr('href');
+  const hasDateModified = jsonld.some(j => !!(j as any)['dateModified']) ||
+    !!$('meta[property="article:modified_time"]').attr('content');
+  const hasLinkedin = $('a[href*="linkedin.com"]').length > 0;
+  const hasFreeTrialCta = /free trial|try free|start free|free forever/.test(homeText);
+  const hasDemoCta = /book a demo|request demo|schedule demo|get a demo/.test(homeText);
+  const hasTestimonials = /testimonial|what our customers|what clients say|customer review|what people say/.test(homeText);
 
   const websiteMeta = {
     has_schema_org: jsonld.length > 0,
@@ -207,6 +236,21 @@ export async function scrapeSaasBrandProfile(domain: string): Promise<BrandProfi
     has_faq: hasFaq,
     has_pricing_page: !!pricingHtml,
     languages_detected: languagesDetected,
+    // Extended checklist signals
+    has_about_page: !!aboutHtml,
+    has_blog: !!blogHtml,
+    has_case_studies: !!caseStudiesHtml,
+    has_comparison_page: !!compareHtml,
+    has_press_page: !!pressHtml,
+    has_contact_page: !!contactHtml,
+    has_open_graph: hasOpenGraph,
+    has_hreflang: hasHreflang,
+    has_free_trial_cta: hasFreeTrialCta,
+    has_demo_cta: hasDemoCta,
+    has_linkedin: hasLinkedin,
+    has_canonical: hasCanonical,
+    has_date_modified: hasDateModified,
+    has_testimonials: hasTestimonials,
   };
 
   // Auto-generate verifiable facts

@@ -80,6 +80,21 @@ export interface BrandProfileSaaS {
     has_faq: boolean;
     has_pricing_page: boolean;
     languages_detected: string[];
+    // Extended signals for checklist evaluation
+    has_about_page?: boolean;
+    has_blog?: boolean;
+    has_case_studies?: boolean;
+    has_comparison_page?: boolean;
+    has_press_page?: boolean;
+    has_contact_page?: boolean;
+    has_open_graph?: boolean;
+    has_hreflang?: boolean;
+    has_free_trial_cta?: boolean;
+    has_demo_cta?: boolean;
+    has_linkedin?: boolean;
+    has_canonical?: boolean;
+    has_date_modified?: boolean;
+    has_testimonials?: boolean;
   };
   verifiable_facts: VerifiableFact[];
   scrapedAt: string;
@@ -335,9 +350,27 @@ export interface Recommendation {
   title: string;
   description: string;
   based_on: string;
-  category: 'accuracy' | 'visibility' | 'website' | 'presence';
+  category: 'accuracy' | 'visibility' | 'website' | 'presence' | 'content' | 'technical';
   // Legacy
   impact?: 'low' | 'medium' | 'high';
+}
+
+// ─── Checklist ────────────────────────────────────────────────────────────────
+
+import type { ChecklistItem } from '../config/saasChecklist';
+
+export interface ChecklistResult {
+  item: ChecklistItem;
+  status: 'pass' | 'fail' | 'partial' | 'not_applicable';
+  detail?: string;
+}
+
+export interface ChecklistEvaluation {
+  results: ChecklistResult[];
+  gaps: ChecklistResult[]; // failed or partial only
+  score: number;           // 0-100 weighted
+  passed: number;
+  total: number;           // excludes not_applicable
 }
 
 // ─── Scores ───────────────────────────────────────────────────────────────────

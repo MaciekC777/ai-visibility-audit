@@ -1,9 +1,11 @@
 import { Recommendation } from '@/types';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardContent } from '@/components/ui/Card';
+import { getT } from '@/lib/reportTranslations';
 
 interface RecommendationsSectionProps {
   recommendations?: Recommendation[];
+  language?: string;
 }
 
 const priorityVariant: Record<Recommendation['priority'], 'error' | 'warning' | 'info' | 'default'> = {
@@ -13,21 +15,22 @@ const priorityVariant: Record<Recommendation['priority'], 'error' | 'warning' | 
   low: 'default',
 };
 
-const effortLabels: Record<Recommendation['effort'], { label: string; color: string }> = {
-  quick_win: { label: '⚡ Quick win', color: 'text-green-600' },
-  moderate: { label: '⏱ Moderate effort', color: 'text-yellow-600' },
-  significant: { label: '🔧 Significant effort', color: 'text-red-600' },
-};
-
-const categoryLabels: Record<string, string> = {
-  accuracy: 'Fix Accuracy Issues',
-  visibility: 'Boost Visibility',
-  website: 'Website Improvements',
-  presence: 'Third-Party Presence',
-};
-
-export function RecommendationsSection({ recommendations }: RecommendationsSectionProps) {
+export function RecommendationsSection({ recommendations, language }: RecommendationsSectionProps) {
+  const t = getT(language);
   if (!recommendations || recommendations.length === 0) return null;
+
+  const effortLabels: Record<Recommendation['effort'], { label: string; color: string }> = {
+    quick_win: { label: t.quickWin, color: 'text-green-600' },
+    moderate: { label: t.moderateEffort, color: 'text-yellow-600' },
+    significant: { label: t.significantEffort, color: 'text-red-600' },
+  };
+
+  const categoryLabels: Record<string, string> = {
+    accuracy: t.fixAccuracyIssues,
+    visibility: t.boostVisibility,
+    website: t.websiteImprovements,
+    presence: t.thirdPartyPresence,
+  };
 
   const grouped = recommendations.reduce<Record<string, Recommendation[]>>((acc, r) => {
     acc[r.category] = [...(acc[r.category] ?? []), r];
@@ -36,7 +39,7 @@ export function RecommendationsSection({ recommendations }: RecommendationsSecti
 
   return (
     <section id="recommendations" className="scroll-mt-24">
-      <h2 className="text-2xl font-display font-bold text-gray-900 mb-6">Recommendations</h2>
+      <h2 className="text-2xl font-display font-bold text-gray-900 mb-6">{t.recommendations}</h2>
 
       <div className="space-y-6">
         {Object.entries(grouped).map(([category, recs]) => (
@@ -61,7 +64,7 @@ export function RecommendationsSection({ recommendations }: RecommendationsSecti
                           </div>
                           <p className="text-sm text-gray-600 leading-relaxed">{r.description}</p>
                           {r.based_on && (
-                            <p className="text-xs text-gray-400 mt-1.5 italic">Based on: {r.based_on}</p>
+                            <p className="text-xs text-gray-400 mt-1.5 italic">{t.basedOn}{r.based_on}</p>
                           )}
                         </div>
                       </div>

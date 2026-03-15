@@ -1,10 +1,12 @@
 import { VerifiedClaim } from '@/types';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardContent } from '@/components/ui/Card';
+import { getT } from '@/lib/reportTranslations';
 
 interface AccuracySectionProps {
   hallucinations?: VerifiedClaim[];
   accuracyScore?: number | null;
+  language?: string;
 }
 
 const verdictVariant: Record<string, 'error' | 'warning' | 'success' | 'info'> = {
@@ -21,30 +23,29 @@ const severityBadge: Record<string, string> = {
   low: 'bg-gray-100 text-gray-600',
 };
 
-export function AccuracySection({ hallucinations, accuracyScore }: AccuracySectionProps) {
+export function AccuracySection({ hallucinations, accuracyScore, language }: AccuracySectionProps) {
+  const t = getT(language);
   const issues = hallucinations?.filter((h) => h.verdict !== 'correct') ?? [];
 
   return (
     <section id="accuracy" className="scroll-mt-24">
-      <h2 className="text-2xl font-display font-bold text-gray-900 mb-6">AI Accuracy Report</h2>
+      <h2 className="text-2xl font-display font-bold text-gray-900 mb-6">{t.aiAccuracyReport}</h2>
 
       <div className="mb-6 flex items-center gap-4 p-5 bg-white border border-gray-200 rounded-xl">
         <div className={`text-5xl font-bold ${accuracyScore == null ? 'text-gray-300' : accuracyScore >= 90 ? 'text-green-600' : accuracyScore >= 70 ? 'text-yellow-500' : accuracyScore >= 50 ? 'text-orange-500' : 'text-red-600'}`}>
           {accuracyScore ?? '—'}
         </div>
         <div>
-          <div className="font-semibold text-gray-900">Accuracy Score</div>
+          <div className="font-semibold text-gray-900">{t.accuracyScore}</div>
           <div className="text-sm text-gray-500">
-            {accuracyScore == null ? 'No verifiable claims found' : `${issues.length} issue${issues.length !== 1 ? 's' : ''} detected`}
+            {accuracyScore == null ? t.noVerifiableClaims : t.issuesDetected(issues.length)}
           </div>
         </div>
       </div>
 
       {issues.length === 0 ? (
         <p className="text-green-700 bg-green-50 rounded-xl p-4 text-sm">
-          {accuracyScore == null
-            ? 'AI models returned no verifiable factual claims about your brand.'
-            : 'No hallucinations detected. AI models accurately represent your brand.'}
+          {accuracyScore == null ? t.noClaimsFound : t.noHallucinationsDetected}
         </p>
       ) : (
         <div className="space-y-3">
@@ -58,14 +59,14 @@ export function AccuracySection({ hallucinations, accuracyScore }: AccuracySecti
                         {h.verdict.replace(/_/g, ' ')}
                       </Badge>
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${severityBadge[h.severity] ?? ''}`}>
-                        {h.severity} severity
+                        {h.severity}{t.severity}
                       </span>
                       <span className="text-xs text-gray-400">{h.model} — prompt {h.promptId}</span>
                     </div>
                     <p className="text-sm text-gray-900 font-medium">&ldquo;{h.claim_text}&rdquo;</p>
                     <p className="text-xs text-gray-500 mt-1">{h.explanation}</p>
                     {h.correction && (
-                      <p className="text-xs text-blue-600 mt-1 font-medium">✓ Correct: {h.correction}</p>
+                      <p className="text-xs text-blue-600 mt-1 font-medium">{t.correct}{h.correction}</p>
                     )}
                   </div>
                 </div>

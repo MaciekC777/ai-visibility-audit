@@ -1,9 +1,11 @@
 import { WebsiteReadiness, BrandProfile, BrandProfileSaaS, BrandProfileLocal } from '@/types';
 import { Card, CardContent } from '@/components/ui/Card';
+import { getT } from '@/lib/reportTranslations';
 
 interface WebsiteReadinessSectionProps {
   websiteReadiness?: WebsiteReadiness;
   brandProfile?: BrandProfile;
+  language?: string;
 }
 
 const importanceColor: Record<string, string> = {
@@ -13,7 +15,8 @@ const importanceColor: Record<string, string> = {
   low: 'text-gray-500 bg-gray-50',
 };
 
-export function WebsiteReadinessSection({ websiteReadiness, brandProfile }: WebsiteReadinessSectionProps) {
+export function WebsiteReadinessSection({ websiteReadiness, brandProfile, language }: WebsiteReadinessSectionProps) {
+  const t = getT(language);
   if (!websiteReadiness) return null;
 
   const checks = websiteReadiness.checks ?? [];
@@ -30,23 +33,22 @@ export function WebsiteReadinessSection({ websiteReadiness, brandProfile }: Webs
     <section id="website" className="scroll-mt-24 space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-2xl font-display font-bold text-gray-900">Website Analysis</h2>
-          <p className="text-sm text-gray-400 mt-1">Technical readiness and content structure for AI indexing</p>
+          <h2 className="text-2xl font-display font-bold text-gray-900">{t.websiteAnalysis}</h2>
+          <p className="text-sm text-gray-400 mt-1">{t.technicalReadiness}</p>
         </div>
         <div className="text-center shrink-0">
           <div className={`text-4xl font-bold ${score >= 70 ? 'text-green-600' : score >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
             {score}
           </div>
-          <div className="text-xs text-gray-400">{passedCount}/{checks.length} passed</div>
+          <div className="text-xs text-gray-400">{t.passed(passedCount, checks.length)}</div>
         </div>
       </div>
 
-      {/* Key features / services */}
       {(keyFeatures.length > 0 || description) && (
         <Card>
           <CardContent>
             <h3 className="text-sm font-semibold text-gray-700 mb-3">
-              {brandProfile?.mode === 'saas' ? 'Key Features Detected' : 'Key Services Detected'}
+              {brandProfile?.mode === 'saas' ? t.keyFeaturesDetected : t.keyServicesDetected}
             </h3>
             {description && (
               <p className="text-sm text-gray-500 mb-3 italic">&ldquo;{description.slice(0, 200)}{description.length > 200 ? '…' : ''}&rdquo;</p>
@@ -67,7 +69,7 @@ export function WebsiteReadinessSection({ websiteReadiness, brandProfile }: Webs
       <Card>
         <CardContent>
           <h3 className="text-sm font-semibold text-gray-700 mb-4">
-            {websiteReadiness.mode === 'local' ? 'Local SEO Checks' : 'SEO & AI Readiness Checks'}
+            {websiteReadiness.mode === 'local' ? t.localSeoChecks : t.seoAIChecks}
           </h3>
           <div className="space-y-3">
             {checks.map((check) => (
@@ -107,4 +109,3 @@ export function WebsiteReadinessSection({ websiteReadiness, brandProfile }: Webs
     </section>
   );
 }
-

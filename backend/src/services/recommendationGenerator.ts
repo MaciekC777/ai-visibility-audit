@@ -8,6 +8,7 @@ import {
   VerifiedClaim,
   Competitor,
   SourceAnalysis,
+  ChecklistResult,
 } from '../types';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
@@ -23,7 +24,8 @@ export async function generateRecommendations(
   hallucinations: VerifiedClaim[],
   competitors: Competitor[],
   sourceAnalysis: SourceAnalysis,
-  language: string = 'en'
+  language: string = 'en',
+  checklistGaps: ChecklistResult[] = []
 ): Promise<Recommendation[]> {
   const languageName = LANGUAGE_NAMES[language as keyof typeof LANGUAGE_NAMES] ?? 'English';
   const missingPlatforms = thirdParty.filter(p => p.status === 'missing').map(p => p.platform);
@@ -36,6 +38,18 @@ Generate specific, actionable recommendations based on THIS audit's concrete fin
 Every recommendation MUST reference a specific finding. No generic advice.
 IMPORTANT: Write ALL text fields (title, description, based_on) in ${languageName}. Do not use any other language.
 Return ONLY a valid JSON array. No markdown.`;
+
+  // Format checklist gaps for GPT — only include gaps, sorted by importance
+  const importanceOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+  const sortedGaps = [...checklistGaps].sort(
+    (a, b) => importanceOrder[a.item.importance] - importanceOrder[b.item.importance]
+  );
+  const checklistSection = sortedGaps.length > 0
+    ? `\nChecklist gaps (${sortedGaps.length} missing items — use these as primary sources for recommendations):\n` +
+      sortedGaps.map(g =>
+        `- [${g.item.importance.toUpperCase()}] ${g.item.title} | effort: ${g.item.effort} | ${g.detail ?? 'not detected'} | fix: ${g.item.fix}`
+      ).join('\n')
+    : '\nChecklist gaps: none detected';
 
   const userPrompt = `Business Mode: ${profile.mode}
 Brand: ${brandName} (${profile.brand.domain})
@@ -59,11 +73,13 @@ Competitors visible instead of brand: ${competitors.slice(0, 5).map(c => `${c.na
 
 Sources AI cites about brand: ${sourceAnalysis.brand_site_cited ? 'Brand website cited' : 'Brand website NOT cited by AI'}
 Top third-party sources AI uses: ${sourceAnalysis.third_party_sources.slice(0, 5).map(s => s.url).join(', ') || 'none'}
+${checklistSection}
 
 Generate 5-10 recommendations. Each MUST:
-1. Reference a SPECIFIC finding from this audit
+1. Reference a SPECIFIC finding from this audit (checklist gaps, scores, or detected issues)
 2. Include a concrete, implementable action
-3. For local businesses: prioritize Google Business Profile first
+3. Prioritize checklist gaps marked CRITICAL or HIGH first
+4. For local businesses: prioritize Google Business Profile first
 
 Return JSON array:
 [{
@@ -72,7 +88,7 @@ Return JSON array:
   "title": "string (max 60 chars)",
   "description": "string (2-3 sentences, specific and actionable)",
   "based_on": "string (specific audit finding this is based on)",
-  "category": "accuracy" | "visibility" | "website" | "presence"
+  "category": "accuracy" | "visibility" | "website" | "presence" | "content" | "technical"
 }]
 
 Sort: critical → high → medium → low, then quick_win → moderate → significant.`;

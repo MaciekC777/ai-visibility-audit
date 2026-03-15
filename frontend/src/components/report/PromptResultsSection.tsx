@@ -3,10 +3,12 @@
 import { useState } from 'react';
 import { ModelResponse } from '@/types';
 import { Badge } from '@/components/ui/Badge';
+import { getT } from '@/lib/reportTranslations';
 
 interface PromptResultsSectionProps {
   promptResults?: ModelResponse[];
   brandName?: string;
+  language?: string;
 }
 
 const MODEL_COLORS: Record<string, string> = {
@@ -22,7 +24,7 @@ function highlight(text: string, brandName?: string) {
   return text.replace(regex, '<mark class="bg-yellow-100 text-yellow-900 rounded px-0.5">$1</mark>');
 }
 
-function ResponseRow({ r, brandName }: { r: ModelResponse; brandName?: string }) {
+function ResponseRow({ r, brandName, t }: { r: ModelResponse; brandName?: string; t: ReturnType<typeof getT> }) {
   const [expanded, setExpanded] = useState(false);
   const isLong = r.response && r.response.length > 300;
 
@@ -52,27 +54,28 @@ function ResponseRow({ r, brandName }: { r: ModelResponse; brandName?: string })
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
                   </svg>
-                  Show less
+                  {t.showLess}
                 </>
               ) : (
                 <>
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
-                  Show full response
+                  {t.showFullResponse}
                 </>
               )}
             </button>
           )}
         </div>
       ) : (
-        <p className="text-sm text-gray-400 italic">No response</p>
+        <p className="text-sm text-gray-400 italic">{t.noResponse}</p>
       )}
     </div>
   );
 }
 
-export function PromptResultsSection({ promptResults, brandName }: PromptResultsSectionProps) {
+export function PromptResultsSection({ promptResults, brandName, language }: PromptResultsSectionProps) {
+  const t = getT(language);
   const [selectedModel, setSelectedModel] = useState<string>('all');
   const models = [...new Set(promptResults?.map((r) => r.model) ?? [])];
   const filtered = selectedModel === 'all'
@@ -86,14 +89,14 @@ export function PromptResultsSection({ promptResults, brandName }: PromptResults
 
   return (
     <section id="prompt-results" className="scroll-mt-24">
-      <h2 className="text-2xl font-display font-bold text-gray-900 mb-6">Prompt Results</h2>
+      <h2 className="text-2xl font-display font-bold text-gray-900 mb-6">{t.promptResults}</h2>
 
       <div className="flex gap-2 mb-6 flex-wrap">
         <button
           onClick={() => setSelectedModel('all')}
           className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${selectedModel === 'all' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
         >
-          All models
+          {t.allModels}
         </button>
         {models.map((m) => (
           <button
@@ -117,7 +120,7 @@ export function PromptResultsSection({ promptResults, brandName }: PromptResults
             </div>
             <div className="divide-y divide-gray-100">
               {responses.map((r) => (
-                <ResponseRow key={r.model} r={r} brandName={brandName} />
+                <ResponseRow key={r.model} r={r} brandName={brandName} t={t} />
               ))}
             </div>
           </div>

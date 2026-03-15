@@ -15,8 +15,9 @@ import { calculateAllScores } from '../services/scorer';
 import { generateRecommendations } from '../services/recommendationGenerator';
 import { generateSummary } from '../services/summaryGenerator';
 import { findCompetitorsViaSearch } from '../services/competitorFinder';
+import { evaluateChecklist } from '../services/checklistEvaluator';
 import { PLAN_LIMITS } from '../config/constants';
-import { AuditInput, AuditStatus, VisibilityAnalysis } from '../types';
+import { AuditInput, AuditStatus, BrandProfileSaaS, ChecklistResult, VisibilityAnalysis } from '../types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -70,6 +71,19 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
     await setStatus(auditId, 'third_party_check');
     const thirdParty = await checkThirdPartyPresence(domain, businessMode, plan);
     await saveResult(auditId, 'third_party', thirdParty);
+
+    // ── STEP 3b: Checklist evaluation (SaaS only) ──
+    let checklistGaps: ChecklistResult[] = [];
+    if (businessMode === 'saas') {
+      const checklistEval = evaluateChecklist(profile as BrandProfileSaaS, thirdParty);
+      await saveResult(auditId, 'checklist', checklistEval);
+      checklistGaps = checklistEval.gaps;
+      logger.info('Checklist evaluated', {
+        auditId,
+        score: checklistEval.score,
+        gaps: checklistEval.gaps.length,
+      });
+    }
 
     // ── STEP 4: Generate prompts ── (25-30%)
     await setStatus(auditId, 'generating_prompts');
@@ -139,7 +153,8 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
       hallucinations,
       competitors,
       sourceAnalysis,
-      language
+      language,
+      checklistGaps
     );
     await saveResult(auditId, 'recommendations', recommendations);
 
