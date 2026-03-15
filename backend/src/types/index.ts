@@ -239,7 +239,7 @@ export interface VisibilityAnalysis {
   mentionRate: number; // 0-1 (A+D+K prompts)
   positionScore: number; // 0-1 normalized
   modelCoverage: number; // 0-1
-  sentimentBonus: number; // 0-1
+  categoryBreadth: number; // 0-1 — % of prompt categories with ≥1 mention
   mentionsByModel: Record<string, number>;
   mentionsByCategory: Record<string, number>;
   promptMentions: PromptMentionResult[];

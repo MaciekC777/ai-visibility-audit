@@ -309,7 +309,7 @@ Return ONLY a JSON array of translated strings, same order as input.`;
         { role: 'user', content: JSON.stringify(prompts.map(p => p.text)) },
       ],
       max_tokens: 2000,
-      temperature: 0.3,
+      temperature: 0,
     });
     const raw = res.choices[0]?.message?.content ?? '[]';
     const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();

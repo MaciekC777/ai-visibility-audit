@@ -102,7 +102,7 @@ Sort: critical → high → medium → low, then quick_win → moderate → sign
         { role: 'user', content: userPrompt },
       ],
       max_tokens: 2500,
-      temperature: 0.3,
+      temperature: 0,
     });
 
     const raw = res.choices[0]?.message?.content ?? '[]';

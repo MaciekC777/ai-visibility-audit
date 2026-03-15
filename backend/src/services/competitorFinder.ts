@@ -126,11 +126,20 @@ export async function findCompetitorsViaSearch(
             },
             {
               role: 'user',
-              content: `List 8-12 direct competitors to ${brandName} (${profile.business_type}, ${category}). Return ONLY a JSON array of company names. Exclude ${brandName}.`,
+              content: `List 8-12 direct competitors to ${brandName}.
+
+Brand context:
+- Category: ${category} (${profile.business_type})
+- What it does: ${profile.one_liner ?? ''}
+- Target audience: ${(profile.target_audience ?? []).slice(0, 3).join(', ') || 'general'}
+- Key differentiators: ${(profile.unique_selling_points ?? []).slice(0, 3).join(', ') || 'unknown'}
+- Pricing model: ${profile.pricing?.model ?? 'unknown'}
+
+Return companies that serve the same audience and solve the same problem as ${brandName}. Exclude ${brandName} itself. Return ONLY a JSON array of company names.`,
             },
           ],
           max_tokens: 400,
-          temperature: 0.3,
+          temperature: 0,
           response_format: { type: 'json_object' },
         });
         const raw = res.choices[0]?.message?.content ?? '{}';
@@ -163,11 +172,19 @@ export async function findCompetitorsViaSearch(
           },
           {
             role: 'user',
-            content: `List 5-10 direct competitors to ${brandName} (${profile.business_type}, ${category})${locationStr ? ` ${locationStr}` : ''}. A competitor is a named business in the same category serving the same area. Return ONLY a JSON array of business names. Exclude ${brandName}.`,
+            content: `List 5-10 direct competitors to ${brandName}.
+
+Business context:
+- Category: ${category} (${profile.business_type})
+- What it does: ${profile.one_liner ?? ''}
+- Location: ${locationStr || 'unspecified'}
+- Core offerings: ${(profile.core_offerings ?? []).slice(0, 3).join(', ') || 'unknown'}
+
+A competitor is a named business in the same category${locationStr ? ` serving the same area (${locationStr})` : ''}. Exclude ${brandName} itself. Return ONLY a JSON array of business names.`,
           },
         ],
         max_tokens: 400,
-        temperature: 0.3,
+        temperature: 0,
         response_format: { type: 'json_object' },
       });
       const raw = res.choices[0]?.message?.content ?? '{}';

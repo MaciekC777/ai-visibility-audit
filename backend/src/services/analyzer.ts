@@ -274,11 +274,20 @@ export function aggregateAnalysis(
     promptId: a.promptId,
   }));
 
+  // Category breadth: % of distinct prompt categories with ≥1 organic brand mention
+  const allCategories = new Set(analyses.map(a => a.category));
+  const categoriesWithMention = new Set(
+    analyses.filter(a => a.brand_mentioned).map(a => a.category)
+  );
+  const categoryBreadth = allCategories.size > 0
+    ? categoriesWithMention.size / allCategories.size
+    : 0;
+
   const visibilityAnalysis: VisibilityAnalysis = {
     mentionRate,
     positionScore,
     modelCoverage,
-    sentimentBonus: 0.5,
+    categoryBreadth,
     mentionsByModel,
     mentionsByCategory,
     promptMentions,

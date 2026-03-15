@@ -73,7 +73,7 @@ Keep each paragraph 3-5 sentences. Professional tone, not marketing fluff.`;
         { role: 'user', content: userPrompt },
       ],
       max_tokens: 800,
-      temperature: 0.4,
+      temperature: 0,
     });
 
     const raw = res.choices[0]?.message?.content ?? '{}';

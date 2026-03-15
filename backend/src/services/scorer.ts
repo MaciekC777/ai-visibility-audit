@@ -11,35 +11,15 @@ import {
 
 export function calculateVisibilityScore(
   analysis: VisibilityAnalysis,
-  sentiments: SentimentResult[]
+  _sentiments?: SentimentResult[]
 ): number {
-  const s = sentiments ?? [];
-  const sentimentBonus = calculateSentimentBonus(s);
-
   const score =
     (analysis.mentionRate ?? 0) * 40 +
-    (analysis.positionScore ?? 0) * 30 +
-    (analysis.modelCoverage ?? 0) * 20 +
-    sentimentBonus * 10;
+    (analysis.modelCoverage ?? 0) * 30 +
+    (analysis.positionScore ?? 0) * 20 +
+    (analysis.categoryBreadth ?? 0) * 10;
 
   return Math.round(Math.min(100, Math.max(0, score)));
-}
-
-function calculateSentimentBonus(sentiments: SentimentResult[]): number {
-  const s = sentiments ?? [];
-  if (s.length === 0) return 0.3;
-  const counts = { positive: 0, mixed: 0, neutral: 0, negative: 0 };
-  for (const item of s) {
-    const key = item.overall_sentiment as keyof typeof counts;
-    if (key in counts) counts[key] = (counts[key] ?? 0) + 1;
-  }
-  const total = s.length;
-  return (
-    (counts.positive / total) * 1.0 +
-    (counts.mixed / total) * 0.7 +
-    (counts.neutral / total) * 0.5 +
-    (counts.negative / total) * 0.2
-  );
 }
 
 // ─── Accuracy Score (0-100 or null) ──────────────────────────────────────────

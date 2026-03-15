@@ -26,9 +26,9 @@ export const PLAN_LIMITS: Record<PlanType, PlanLimits> = {
 export const SCORING_WEIGHTS = {
   visibility: {
     mentionRate: 40,
-    positionScore: 30,
-    modelCoverage: 20,
-    sentimentBonus: 10,
+    modelCoverage: 30,
+    positionScore: 20,
+    categoryBreadth: 10,
   },
   perception: {
     positive: 60,

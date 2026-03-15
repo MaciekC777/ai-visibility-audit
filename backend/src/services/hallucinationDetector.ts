@@ -41,7 +41,7 @@ Analyze regardless of language. Return in English.
 
 Responses:
 ${factualResponses.map(r =>
-    `[model:${r.model}][promptId:${r.promptId}]: ${r.response.slice(0, 600)}`
+    `[model:${r.model}][promptId:${r.promptId}]: ${r.response.slice(0, 1500)}`
   ).join('\n\n')}`;
 
   try {
