@@ -117,9 +117,6 @@ export async function analyzeVisibility(
     visibilityCategories.has(r.promptCategory) && !r.error
   );
 
-  // For competitor extraction and sentiment, analyze all valid responses
-  const allValidResponses = responses.filter(r => !r.error);
-
   // Run mention detection in batches (to save costs)
   const promptMentions: PromptMentionResult[] = [];
 
@@ -139,24 +136,8 @@ export async function analyzeVisibility(
     }
   }
 
-  // Run mention detection on non-visibility responses (for competitor extraction only)
-  const nonVisibilityResponses = allValidResponses.filter(r =>
-    !visibilityCategories.has(r.promptCategory)
-  );
-  const allPromptMentions: PromptMentionResult[] = [...promptMentions];
-  for (let i = 0; i < nonVisibilityResponses.length; i += BATCH_SIZE) {
-    const batch = nonVisibilityResponses.slice(i, i + BATCH_SIZE);
-    const batchResults = await Promise.all(
-      batch.map(r => detectMention(r, brandName, category, city))
-    );
-    for (let j = 0; j < batch.length; j++) {
-      allPromptMentions.push({
-        ...batchResults[j],
-        model: batch[j].model,
-        promptId: batch[j].promptId,
-      });
-    }
-  }
+  // allPromptMentions = same as promptMentions (competitor extraction now uses keyword scan, not LLM)
+  const allPromptMentions = promptMentions;
 
   // Calculate metrics
   const mentionedResults = promptMentions.filter(r => r.brand_mentioned);
@@ -313,60 +294,57 @@ Analyze regardless of response language. Write all text fields (specific_praise,
 export function extractCompetitors(
   responses: ModelResponse[],
   brandName: string,
-  promptMentions: PromptMentionResult[],
+  _promptMentions: PromptMentionResult[],
   seedCompetitors: string[] = []
 ): Competitor[] {
   const brandLower = brandName.toLowerCase();
 
-  // Count occurrences
+  // Deduplicate seeds (case-insensitive), exclude own brand
+  const uniqueSeeds = seedCompetitors.filter(
+    (name, idx, arr) =>
+      name.toLowerCase() !== brandLower &&
+      arr.findIndex(n => n.toLowerCase() === name.toLowerCase()) === idx
+  );
+
+  if (uniqueSeeds.length === 0) return [];
+
   const counts: Record<string, {
     total_mentions: number;
     models: Set<string>;
     co_mention_count: number;
     replacement_count: number;
-    positions: number[];
-    seed_only: boolean;
   }> = {};
 
-  // Collect from LLM-detected competitors in all prompt mentions
-  for (const pm of promptMentions) {
-    const resp = responses.find(r => r.promptId === pm.promptId && r.model === pm.model);
-
-    for (const comp of pm.competitors_mentioned) {
-      if (comp.toLowerCase() === brandLower) continue;
-      if (!counts[comp]) {
-        counts[comp] = { total_mentions: 0, models: new Set(), co_mention_count: 0, replacement_count: 0, positions: [], seed_only: false };
-      }
-      counts[comp].total_mentions++;
-      if (resp) {
-        counts[comp].models.add(resp.model);
-        if (pm.brand_mentioned) counts[comp].co_mention_count++;
-        if (!pm.brand_mentioned && pm.recommendation_strength !== 'absent') {
-          counts[comp].replacement_count++;
-        }
-      }
-    }
+  for (const name of uniqueSeeds) {
+    counts[name] = { total_mentions: 0, models: new Set(), co_mention_count: 0, replacement_count: 0 };
   }
 
-  // Merge seed competitors from Perplexity search (not yet detected in responses)
-  for (const seedName of seedCompetitors) {
-    if (seedName.toLowerCase() === brandLower) continue;
-    // Find case-insensitive match in existing counts
-    const existingKey = Object.keys(counts).find(
-      k => k.toLowerCase() === seedName.toLowerCase()
-    );
-    if (!existingKey) {
-      // Add as seed-only with 1 base mention so they pass the threshold
-      counts[seedName] = { total_mentions: 1, models: new Set(), co_mention_count: 0, replacement_count: 0, positions: [], seed_only: true };
+  // Scan each AI response text for competitor names (keyword matching)
+  const brandMentionedInResponse = (text: string) =>
+    text.toLowerCase().includes(brandLower);
+
+  for (const resp of responses) {
+    if (!resp.response) continue;
+    const text = resp.response;
+    const textLower = text.toLowerCase();
+    const brandPresent = brandMentionedInResponse(text);
+
+    for (const name of uniqueSeeds) {
+      const nameLower = name.toLowerCase();
+      // Count all occurrences in this response (1 per response max for frequency)
+      if (textLower.includes(nameLower)) {
+        counts[name].total_mentions++;
+        counts[name].models.add(resp.model);
+        if (brandPresent) counts[name].co_mention_count++;
+        else counts[name].replacement_count++;
+      }
     }
   }
 
   const totalResponses = responses.length || 1;
-  // Dynamic threshold: with ≤10 prompts (free/starter plans) allow 1 mention
-  const minMentions = totalResponses <= 10 ? 1 : 2;
 
-  const detected = Object.entries(counts)
-    .filter(([, v]) => !v.seed_only && v.total_mentions >= minMentions)
+  return Object.entries(counts)
+    .filter(([, v]) => v.total_mentions > 0)
     .sort(([, a], [, b]) => b.total_mentions - a.total_mentions)
     .slice(0, 15)
     .map(([name, v]) => ({
@@ -377,20 +355,6 @@ export function extractCompetitors(
       avg_position: 0,
       models: [...v.models],
     }));
-
-  // Append seed-only competitors after detected ones (up to total 15)
-  const seedOnly = Object.entries(counts)
-    .filter(([, v]) => v.seed_only)
-    .map(([name]) => ({
-      name,
-      total_mentions: 0,
-      co_mention_rate: 0,
-      replacement_rate: 0,
-      avg_position: 0,
-      models: [] as string[],
-    }));
-
-  return [...detected, ...seedOnly].slice(0, 15);
 }
 
 // ─── Source analysis ──────────────────────────────────────────────────────────
