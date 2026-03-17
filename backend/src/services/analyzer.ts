@@ -40,52 +40,49 @@ async function analyzeOneResponse(
 
   const systemPrompt = `You are a brand analysis engine. Analyze an AI model's response and extract structured insights about brand visibility, sentiment, and competitors. Return ONLY valid JSON. No markdown.`;
 
-  const userPrompt = `Brand: ${brandName}
+  const userPrompt = `You are analyzing an AI model's response about the brand "${brandName}".
+
+The user asked: "${response.promptText}"
+Prompt category: ${response.promptCategory}
 Business type: ${profile.business_type}
 Category: ${profile.category}
-Seed competitors (known): ${seedCompetitors.slice(0, 10).join(', ') || 'none'}
-Prompt category: ${response.promptCategory}
-User prompt: "${response.promptText}"
-Model: ${response.model}
+Known competitors: ${seedCompetitors.slice(0, 10).join(', ') || 'none'}
 
-AI Response:
-"${response.response.slice(0, 3000)}"
+The AI responded:
+---
+${response.response.slice(0, 3000)}
+---
 
-Return JSON:
+Analyze this response and return a JSON object with EXACTLY this structure:
+
 {
-  "brand_mentioned": true/false,
-  "brand_name_used": "exact brand name as used in response, or null",
-  "visibility": {
-    "mention_type": "recommended" | "listed" | "briefly_mentioned" | "not_found",
-    "position": number | null,
-    "total_items": number | null,
-    "context": "brief snippet or null"
-  },
-  "sentiment": {
-    "overall": "positive" | "neutral" | "negative" | "mixed",
-    "strengths_mentioned": ["string"],
-    "weaknesses_mentioned": ["string"],
-    "recommendation_stance": "recommended" | "neutral" | "discouraged"
-  },
-  "competitors_in_response": [
-    { "name": "string", "position": number | null, "sentiment": "positive" | "neutral" | "negative" }
-  ],
-  "positioning": {
-    "vs_competitor": "competitor name if direct comparison, else null",
-    "brand_advantage": "string or null",
-    "competitor_advantage": "string or null",
-    "ai_preference": "brand" | "competitor" | "neutral"
-  },
+  "mention_classification": "<one of: strong_recommend | recommended | listed | weak_mention | negative_mention | not_mentioned>",
+  "position": <number (1-based position in any list) or null if not in a list>,
+  "total_items_listed": <number of total items in the list or null>,
+  "sentiment": "<positive | neutral | negative | mixed>",
+  "has_authority_signals": <true if the response uses words like "leading", "popular", "trusted", "well-known", "established", "top", "best-in-class" about ${brandName}, false otherwise>,
+  "competitors_mentioned": [<array of other brand/company names mentioned, excluding "${brandName}">],
   "claims": [
-    { "statement": "factual claim about ${brandName}", "type": "pricing|feature|company_info|location|hours|service|contact|metric", "confidence": "stated_as_fact" | "hedged" | "speculative" }
-  ]
+    {
+      "text": "<specific factual claim about ${brandName}>",
+      "category": "<pricing | feature | company_info | location | hours | service | contact | metric>",
+      "verbatim_quote": <true if this is a direct quote from the response>
+    }
+  ],
+  "brand_positioning": "<1 sentence: how does the AI position this brand, or null if not mentioned>"
 }
 
-Rules:
-- brand_mentioned: true if brand name or clear alias appears in the response
-- competitors_in_response: ALL named businesses/products mentioned as alternatives or options
-- claims: ONLY factual claims about ${brandName} (not competitors)
-- If brand not mentioned, visibility.mention_type = "not_found", sentiment and positioning can be null`;
+Classification guide for mention_classification:
+- "strong_recommend": AI explicitly and enthusiastically recommends ${brandName} as THE top/best choice.
+- "recommended": AI recommends ${brandName} positively among good options, but not as the sole best.
+- "listed": AI includes ${brandName} in a list or comparison neutrally, without strong endorsement or criticism.
+- "weak_mention": AI mentions ${brandName} only briefly, tangentially, or in passing.
+- "negative_mention": AI mentions ${brandName} in a critical or discouraging context.
+- "not_mentioned": ${brandName} does not appear in the response.
+
+For claims: extract ONLY specific, verifiable factual statements about ${brandName} (prices, features, dates, locations, integrations, team size, etc.). Do NOT extract opinions or subjective assessments.
+
+Return ONLY valid JSON, no markdown, no explanation.`;
 
   try {
     const res = await openai.chat.completions.create({
@@ -102,17 +99,69 @@ Rules:
     const raw = res.choices[0]?.message?.content ?? '{}';
     const parsed = JSON.parse(raw);
 
+    // ── Map new fields ──
+    const mentionClassification = (parsed.mention_classification ?? 'not_mentioned') as string;
+    const brandMentioned = mentionClassification !== 'not_mentioned';
+
+    // Legacy mention_type derived from new classification
+    const legacyMentionType = ((): 'recommended' | 'listed' | 'briefly_mentioned' | 'not_found' => {
+      if (mentionClassification === 'strong_recommend' || mentionClassification === 'recommended') return 'recommended';
+      if (mentionClassification === 'listed') return 'listed';
+      if (mentionClassification === 'weak_mention' || mentionClassification === 'negative_mention') return 'briefly_mentioned';
+      return 'not_found';
+    })();
+
+    // Legacy recommendation_stance derived from new classification
+    const recommendationStance = ((): 'recommended' | 'neutral' | 'discouraged' => {
+      if (mentionClassification === 'strong_recommend' || mentionClassification === 'recommended') return 'recommended';
+      if (mentionClassification === 'negative_mention') return 'discouraged';
+      return 'neutral';
+    })();
+
+    // Sentiment: new format is a flat string
+    const flatSentiment = parsed.sentiment ?? 'neutral';
+    const sentimentOverall = (['positive', 'neutral', 'negative', 'mixed'].includes(flatSentiment)
+      ? flatSentiment : 'neutral') as 'positive' | 'neutral' | 'negative' | 'mixed';
+
+    // Claims: map {text, category, verbatim_quote} → {statement, type, confidence}
+    const claims = (parsed.claims ?? []).map((c: any) => ({
+      statement: c.text ?? '',
+      type: c.category ?? 'other',
+      confidence: c.verbatim_quote ? 'stated_as_fact' : 'hedged',
+    }));
+
+    // Competitors: flat string[] → structured objects for legacy aggregation
+    const competitorsInResponse = (parsed.competitors_mentioned ?? []).map((name: string) => ({
+      name,
+      position: null,
+      sentiment: 'neutral' as const,
+    }));
+
     return {
       promptId: response.promptId,
       model: response.model,
       category: response.promptCategory,
-      brand_mentioned: parsed.brand_mentioned ?? false,
-      brand_name_used: parsed.brand_name_used ?? null,
-      visibility: parsed.visibility,
-      sentiment: parsed.sentiment,
-      competitors_in_response: parsed.competitors_in_response ?? [],
-      positioning: parsed.positioning?.vs_competitor ? parsed.positioning : undefined,
-      claims: parsed.claims ?? [],
+      brand_mentioned: brandMentioned,
+      brand_name_used: brandMentioned ? brandName : null,
+      // v2 fields
+      mention_classification: mentionClassification as any,
+      has_authority_signals: parsed.has_authority_signals ?? false,
+      // legacy fields (derived from new data)
+      visibility: {
+        mention_type: legacyMentionType,
+        position: parsed.position ?? null,
+        total_items: parsed.total_items_listed ?? null,
+        context: null,
+      },
+      sentiment: {
+        overall: sentimentOverall,
+        strengths_mentioned: [],
+        weaknesses_mentioned: [],
+        recommendation_stance: recommendationStance,
+      },
+      competitors_in_response: competitorsInResponse,
+      positioning: undefined,
+      claims,
     };
   } catch (e) {
     logger.error('Unified analysis LLM failed', { error: e, promptId: response.promptId });
@@ -125,6 +174,8 @@ Rules:
       category: response.promptCategory,
       brand_mentioned: mentioned,
       brand_name_used: mentioned ? brandName : null,
+      mention_classification: mentioned ? 'listed' : 'not_mentioned',
+      has_authority_signals: false,
     };
   }
 }

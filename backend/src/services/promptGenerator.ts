@@ -116,18 +116,16 @@ async function generateSmartPrompts(
     ? buildSaaSContext(profile as BrandProfileSaaS)
     : buildLocalContext(profile as BrandProfileLocal);
 
-  const categoryGuide = profile.mode === 'saas'
-    ? `- A_discovery (1–2): general discovery queries — "best tools for X", "top X software in ${new Date().getFullYear()}"
-- B_factual (1–2): what THIS brand offers, its strengths, target users — "what is ${brandName}", "who is ${brandName} for", "what does ${brandName} do"
-- C_comparison (1): comparing THIS brand with a competitor — "${brandName} vs [competitor]", "is ${brandName} better than [X]"
-- D_recommendation (1): recommendation for a use case — "best [category] for [persona]", no brand name
-- E_evaluation (0–1): overall opinion — "is ${brandName} worth it", "pros and cons of ${brandName}"`
-    : `- F_local_list (1–2): explicit ranking/list queries — "give me 5 best [cuisine/specialty] in [city]", "top 5 [category] in [city] ranked", "ranking najlepszych [specialty] w [city]" — use the brand's specific cuisine or specialty type, NOT the generic category name; NO brand name
-- A_discovery (1): general discovery — "best [category] in [city]", "recommended [category] near me"
-- B_factual (1–2): what THIS business offers, its specialties, cuisine/style — "what does ${brandName} specialize in", "what cuisine does ${brandName} serve" — NEVER ask about hours, phone, address, or other operational details
-- C_comparison (1): comparing THIS business with a local competitor
-- D_recommendation (1): recommendation for an occasion — "where to go for [cuisine/service] in [city]", no brand name
-- E_evaluation (0–1): reviews/reputation — "is ${brandName} worth visiting", "what do people say about ${brandName}"`;
+  const categoryGuide = `- discovery (3 prompts): user asks about the category or problem WITHOUT mentioning ${brandName} — tests organic visibility. E.g. "best ${profile.brand.category} tools", "top solutions for [problem]", "what software helps with [use case]"
+- factual (2 prompts): user asks DIRECTLY about "${brandName}" — tests factual accuracy. E.g. "what is ${brandName}", "what does ${brandName} offer", "who uses ${brandName}"
+- comparative (2 prompts): user compares brands or asks for alternatives — tests competitive positioning. E.g. "${brandName} vs alternatives", "compare ${brandName} with competitors", "is there something better than ${brandName}"
+- evaluation (1 prompt): user seeks opinions or reviews — tests reputation. E.g. "is ${brandName} good", "pros and cons of ${brandName}", "what do people think of ${brandName}"
+- practical (1 prompt): user asks practical questions — tests knowledge depth. E.g. "${brandName} pricing", "${brandName} integrations", "does ${brandName} work with [tool]"
+
+Rules:
+- discovery prompts must NOT mention the brand name — they simulate blind/organic discovery
+- factual, comparative, evaluation, practical prompts MAY mention the brand name
+- NEVER generate prompts asking about opening hours, phone numbers, email, or exact address`;
 
   const keywordNote = keywords.length > 0
     ? `\nAlso include 1–2 prompts using these keywords: ${keywords.slice(0, 5).join(', ')}`
@@ -147,13 +145,19 @@ Rules:
   const userPrompt = `Brand context:
 ${context}${keywordNote}
 
-Generate exactly ${count} prompts. Distribute across these categories:
+Generate exactly ${count} prompts distributed as follows:
+- 3 discovery prompts
+- 2 factual prompts
+- 2 comparative prompts
+- 1 evaluation prompt
+- 1 practical prompt
+
 ${categoryGuide}
 
 Return JSON array:
-[{ "id": "A1", "category": "A_discovery", "text": "..." }, ...]
+[{ "id": "D1", "category": "discovery", "text": "..." }, ...]
 
-Category values must be exactly one of: A_discovery, B_factual, C_comparison, D_recommendation, E_evaluation, K_keyword`;
+Category values must be exactly one of: discovery, factual, comparative, evaluation, practical`;
 
   const res = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
@@ -181,8 +185,9 @@ Category values must be exactly one of: A_discovery, B_factual, C_comparison, D_
     .slice(0, count)
     .map(p => ({
       id: p.id,
-      category: p.category,
+      promptCategory: p.category,  // new-style category name (discovery|factual|comparative|evaluation|practical)
       text: p.text.trim(),
+      prompt: p.text.trim(),
       language,
     }));
 }

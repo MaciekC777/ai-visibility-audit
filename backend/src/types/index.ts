@@ -187,6 +187,9 @@ export type PromptCategory =
   | 'F_local_list'   // local only: "give me top 5 X in Y" ranking queries
   | 'K_keyword';
 
+// New prompt categories (v2 — used in promptCategory field)
+export type NewPromptCategory = 'discovery' | 'factual' | 'comparative' | 'evaluation' | 'practical';
+
 export interface PromptItem {
   id: string;
   category?: PromptCategory;   // old-style category
@@ -196,6 +199,17 @@ export interface PromptItem {
   persona?: string;
   test_intent?: string;
   language: Language;
+}
+
+// Domain-scoped reusable prompt (stored in domain_prompts table)
+export interface StoredPrompt {
+  id: string;
+  domain: string;
+  first_audit_id: string;
+  category: NewPromptCategory;
+  prompt_text: string;
+  language: Language;
+  created_at: string;
 }
 
 // ─── Model Responses ─────────────────────────────────────────────────────────
@@ -520,12 +534,26 @@ export interface RawScrapedData {
   };
 }
 
+// ─── Mention Classification (v2 — 6-level scale) ─────────────────────────────
+
+export type MentionClassification =
+  | 'strong_recommend'
+  | 'recommended'
+  | 'listed'
+  | 'weak_mention'
+  | 'negative_mention'
+  | 'not_mentioned';
+
 export interface UnifiedResponseAnalysis {
   promptId: string;
   model: string;
   category: string;
   brand_mentioned: boolean;
   brand_name_used: string | null;
+  // v2 scoring fields
+  mention_classification?: MentionClassification;
+  has_authority_signals?: boolean;
+  // existing optional fields
   visibility?: {
     mention_type: 'recommended' | 'listed' | 'briefly_mentioned' | 'not_found';
     position: number | null;
@@ -576,4 +604,41 @@ export interface NewAuditScores extends AuditScores {
   shareOfVoice: number;
   competitiveRank: number;
   overallScore: number;
+}
+
+// ─── Scoring component interfaces (v2) ───────────────────────────────────────
+
+export interface VisibilityComponents {
+  weighted_mention_avg: number;
+  position_score: number;
+  model_coverage: number;
+  consistency_bonus: number;
+}
+
+export interface ReputationComponents {
+  sentiment_avg: number | null;
+  authority_ratio: number | null;
+  recommend_strength: number | null;
+  mention_count: number;
+}
+
+export interface CompetitiveComponents {
+  share_of_voice: number | null;
+  avg_rank: number | null;
+}
+
+export interface CompetitorEntry {
+  name: string;
+  mention_count: number;
+  total_weight: number;
+}
+
+export interface ClaimStats {
+  total: number;
+  correct: number;
+  incorrect: number;
+  unverifiable: number;
+  high_severity: number;
+  medium_severity: number;
+  low_severity: number;
 }

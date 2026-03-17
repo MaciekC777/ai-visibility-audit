@@ -200,11 +200,52 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
       logger.warn('Checklist evaluation failed', { auditId, error: e });
     }
 
-    // ── STEP 4: Generate prompts ──
+    // ── STEP 4: Generate prompts (or reuse from domain_prompts table) ──
     await setStatus(auditId, 'generating_prompts');
     let prompts: any[] = [];
     try {
-      prompts = await generatePrompts(compatProfile, plan, language, region, keywords, seedCompetitors);
+      // Try to reuse existing prompts for this domain+language to ensure repeatability
+      let reused = false;
+      try {
+        const { data: existingPrompts } = await supabaseAdmin
+          .from('domain_prompts')
+          .select('*')
+          .eq('domain', domain)
+          .eq('language', language);
+
+        if (existingPrompts && existingPrompts.length >= 9) {
+          prompts = existingPrompts.map((p: any) => ({
+            id: p.id,
+            promptCategory: p.category,
+            text: p.prompt_text,
+            prompt: p.prompt_text,
+            language: p.language,
+          }));
+          reused = true;
+          logger.info('Reusing domain prompts', { auditId, domain, count: prompts.length });
+        }
+      } catch {
+        // domain_prompts table may not exist yet — fall through to generation
+      }
+
+      if (!reused) {
+        prompts = await generatePrompts(compatProfile, plan, language, region, keywords, seedCompetitors);
+        // Save prompts for future reuse
+        try {
+          const promptsToInsert = prompts.map((p: any) => ({
+            domain,
+            first_audit_id: auditId,
+            category: p.promptCategory ?? 'discovery',
+            prompt_text: p.text ?? p.prompt,
+            language,
+          }));
+          await supabaseAdmin
+            .from('domain_prompts')
+            .upsert(promptsToInsert, { onConflict: 'domain,prompt_text' });
+        } catch {
+          // Non-fatal: table may not exist, skip silently
+        }
+      }
     } catch (e) {
       logger.error('Prompt generation failed', { auditId, error: e });
       throw e; // fatal — can't continue without prompts
@@ -281,13 +322,11 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
     // ── STEP 7: Scores ──
     await setStatus(auditId, 'scoring');
 
-    const brandTotalMentions = Object.values(visibilityAnalysis?.mentionsByModel ?? {}).reduce((a, b) => a + b, 0);
     const scores = calculateAllScores(
-      visibilityAnalysis,
+      unifiedAnalyses,
       hallucinations,
-      sentimentResults,
-      competitors,
-      brandTotalMentions
+      PLAN_LIMITS[plan].models,
+      profile.brand_name
     );
     await saveResult(auditId, 'scores', scores);
 

@@ -4,22 +4,22 @@ export const PLAN_LIMITS: Record<PlanType, PlanLimits> = {
   free: {
     auditsPerMonth: 1,
     models: ['openai'],
-    promptsPerAudit: 5,
+    promptsPerAudit: 9,
   },
   starter: {
     auditsPerMonth: 5,
     models: ['openai', 'anthropic', 'gemini'],
-    promptsPerAudit: 5,
+    promptsPerAudit: 9,
   },
   pro: {
     auditsPerMonth: 20,
     models: ['openai', 'anthropic', 'gemini', 'perplexity'],
-    promptsPerAudit: 5,
+    promptsPerAudit: 9,
   },
   agency: {
     auditsPerMonth: Infinity,
     models: ['openai', 'anthropic', 'gemini', 'perplexity'],
-    promptsPerAudit: 5,
+    promptsPerAudit: 9,
   },
 };
 
@@ -132,3 +132,33 @@ export const RATE_LIMIT_MAX_REQUESTS = 30;
 // Retry config for AI model calls
 export const RETRY_DELAYS_MS = [2000, 6000, 18000];
 export const MODEL_TIMEOUT_MS = 45_000;
+
+// ─── v2 Scoring constants ─────────────────────────────────────────────────────
+
+// Mention classification weights for Visibility Score
+export const MENTION_WEIGHTS: Record<string, number> = {
+  not_mentioned:    0.0,
+  negative_mention: 0.3,  // AI knows the brand — still visibility, sentiment handled separately
+  weak_mention:     0.4,
+  listed:           0.6,
+  recommended:      0.85,
+  strong_recommend: 1.0,
+};
+
+// New 9-prompt distribution
+export const PROMPT_DISTRIBUTION = {
+  discovery:   3,  // organic category queries — no brand name
+  factual:     2,  // direct brand questions
+  comparative: 2,  // brand vs alternatives
+  evaluation:  1,  // opinions / pros-cons
+  practical:   1,  // pricing / integrations / availability
+} as const;
+
+// Minimum claims required before Accuracy Score is meaningful
+export const ACCURACY_MIN_CLAIMS = 5;
+
+// Minimum brand mentions required before Reputation Score is meaningful
+export const REPUTATION_MIN_MENTIONS = 2;
+
+// Minimum competitors needed for Competitive Position Score
+export const COMPETITIVE_MIN_COMPETITORS = 1;
