@@ -5,6 +5,7 @@ import { corsMiddleware } from './middleware/cors';
 import auditsRouter from './routes/audits';
 import authRouter from './routes/auth';
 import stripeRouter from './routes/stripe';
+import auditRouter from './routes/audit';
 import { logger } from './utils/logger';
 import { env } from './config/env';
 
@@ -24,6 +25,7 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOS
 
 // Routes
 app.use('/audits', auditsRouter);
+app.use('/audit', auditRouter);
 app.use('/auth', authRouter);
 app.use('/stripe', stripeRouter);
 
