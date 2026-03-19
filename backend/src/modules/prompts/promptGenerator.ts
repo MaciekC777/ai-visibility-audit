@@ -1,35 +1,66 @@
 import { GeneratedPrompt } from './types';
 import { TEMPLATES } from './promptTemplates';
 import { ScrapedData } from '../scraper/types';
+import { resolveBusinessDescriptor, pluralize } from './businessDescriptorResolver';
 
-// Hardcoded service → Polish description mapping (TODO: LLM for unknown services)
+// ─── Service description mapping (for {problemDescription}) ──────────────────
+
 const SERVICE_DESC_MAP: Array<[RegExp, string]> = [
-  [/web.?design|projektow/i, 'projektowaniem stron internetowych'],
-  [/web.?dev|programow/i, 'tworzeniem stron internetowych'],
-  [/seo|pozycjonow/i, 'pozycjonowaniem w wyszukiwarkach'],
-  [/market/i, 'działaniami marketingowymi'],
-  [/account|księgow/i, 'prowadzeniem księgowości'],
-  [/legal|prawo|prawna/i, 'obsługą prawną'],
-  [/clean|sprząt/i, 'sprzątaniem'],
-  [/catering/i, 'cateringiem'],
-  [/restaurant|restaur/i, 'restauracją'],
-  [/fitness|trening/i, 'treningiem personalnym'],
-  [/photo|foto/i, 'fotografią'],
-  [/transport|logist/i, 'transportem i logistyką'],
+  [/web.?design|projektow/i, 'stworzeniem profesjonalnej strony internetowej'],
+  [/web.?dev|programow/i, 'wdrożeniem aplikacji webowej'],
+  [/seo|pozycjonow/i, 'poprawą widoczności w wyszukiwarkach'],
+  [/market/i, 'skutecznym dotarciem do klientów'],
+  [/account|księgow/i, 'prowadzeniem księgowości i rozliczeń'],
+  [/legal|prawo|prawna/i, 'kwestiami prawnymi firmy'],
+  [/clean|sprząt/i, 'utrzymaniem czystości'],
+  [/catering/i, 'organizacją cateringu'],
+  [/restaurant|jedzeni/i, 'znalezieniem dobrego miejsca na posiłek'],
+  [/fitness|trening/i, 'poprawą kondycji i treningiem'],
+  [/photo|foto/i, 'profesjonalną sesją zdjęciową'],
+  [/transport|logist/i, 'organizacją transportu'],
+  [/project.?manag|zarządzanie.?projekt/i, 'zarządzaniem projektami zespołowymi'],
+  [/crm/i, 'zarządzaniem relacjami z klientami'],
+  [/hr\b|rekrutac/i, 'zarządzaniem zasobami ludzkimi'],
+  [/analytic|raportow/i, 'analizą danych i raportowaniem'],
 ];
 
-function toServiceDescription(service: string): string {
+function toProblemDescription(service: string): string {
   for (const [pattern, desc] of SERVICE_DESC_MAP) {
     if (pattern.test(service)) return desc;
   }
-  return `obsługą w zakresie: ${service}`;
+  return `rozwiązaniem problemu związanego z: ${service}`;
 }
+
+// ─── Clause builders ─────────────────────────────────────────────────────────
+
+export function buildLocationClause(
+  location: ScrapedData['location'],
+  businessType: 'saas' | 'local_business',
+): string {
+  if (businessType === 'saas') return '';
+  const city = location?.city;
+  return city ? ` w ${city}` : '';
+}
+
+export function buildServiceClause(
+  primaryService: string,
+  businessType: 'saas' | 'local_business',
+): string {
+  if (!primaryService) return '';
+  const prep = businessType === 'saas' ? 'do' : 'od';
+  return ` ${prep} ${primaryService}`;
+}
+
+// ─── Resolved variable context ────────────────────────────────────────────────
 
 interface ResolvedVars {
   companyName: string;
   primaryService: string;
-  city: string | null;
-  serviceDescription: string;
+  businessDescriptor: string;
+  businessDescriptorPlural: string;
+  locationClause: string;
+  serviceClause: string;
+  problemDescription: string;
   services: string[];
 }
 
@@ -38,7 +69,6 @@ function resolveVars(
   userKeywords: string[],
   businessType: 'saas' | 'local_business',
 ): ResolvedVars {
-  // 1. User data  2. Scraper data  3. Fallback
   const companyName =
     scraped.companyName ??
     scraped.domain
@@ -51,18 +81,35 @@ function resolveVars(
     scraped.services[0] ??
     (businessType === 'saas' ? 'zarządzania projektami' : 'usług lokalnych');
 
-  const city = scraped.location?.city ?? null;
-  const serviceDescription = toServiceDescription(primaryService);
+  const businessDescriptor = resolveBusinessDescriptor(scraped, userKeywords, businessType);
+  const businessDescriptorPlural = pluralize(businessDescriptor);
+  const locationClause = buildLocationClause(scraped.location, businessType);
+  const serviceClause = buildServiceClause(primaryService, businessType);
+  const problemDescription = toProblemDescription(primaryService);
 
-  return { companyName, primaryService, city, serviceDescription, services: scraped.services };
+  return {
+    companyName,
+    primaryService,
+    businessDescriptor,
+    businessDescriptorPlural,
+    locationClause,
+    serviceClause,
+    problemDescription,
+    services: scraped.services,
+  };
 }
+
+// ─── Template filler ──────────────────────────────────────────────────────────
 
 function fill(template: string, vars: ResolvedVars): string {
   return template
     .replace(/{companyName}/g, vars.companyName)
     .replace(/{primaryService}/g, vars.primaryService)
-    .replace(/{city}/g, vars.city ?? '[miasto]')
-    .replace(/{serviceDescription}/g, vars.serviceDescription);
+    .replace(/{businessDescriptor}/g, vars.businessDescriptor)
+    .replace(/{businessDescriptorPlural}/g, vars.businessDescriptorPlural)
+    .replace(/{locationClause}/g, vars.locationClause)
+    .replace(/{serviceClause}/g, vars.serviceClause)
+    .replace(/{problemDescription}/g, vars.problemDescription);
 }
 
 function resolveExpected(
@@ -76,6 +123,8 @@ function resolveExpected(
   }
   return [...new Set(out)].filter(Boolean);
 }
+
+// ─── Public API ───────────────────────────────────────────────────────────────
 
 export interface GeneratePromptsResult {
   prompts: GeneratedPrompt[];
@@ -97,8 +146,8 @@ export function generatePrompts(
     warnings.push('Nie udało się wykryć nazwy firmy — użyto domeny jako zastępstwa.');
     missingDataFlags.push('company_name_not_found');
   }
-  if (userBusinessType === 'local_business' && !vars.city) {
-    warnings.push('Nie znaleziono lokalizacji — prompty pośrednie mogą być mniej precyzyjne (użyto "[miasto]").');
+  if (userBusinessType === 'local_business' && !scraped.location?.city) {
+    warnings.push('Nie znaleziono lokalizacji — prompty pośrednie mogą być mniej precyzyjne.');
     missingDataFlags.push('location_missing');
   }
   if (scraped.services.length === 0 && userKeywords.length === 0) {
@@ -123,8 +172,11 @@ export function generatePrompts(
     for (const v of tpl.expectedVariables) {
       if (v === 'companyName') usedVars.companyName = vars.companyName;
       else if (v === 'primaryService') usedVars.primaryService = vars.primaryService;
-      else if (v === 'city') usedVars.city = vars.city ?? '[miasto]';
-      else if (v === 'serviceDescription') usedVars.serviceDescription = vars.serviceDescription;
+      else if (v === 'businessDescriptor') usedVars.businessDescriptor = vars.businessDescriptor;
+      else if (v === 'businessDescriptorPlural') usedVars.businessDescriptorPlural = vars.businessDescriptorPlural;
+      else if (v === 'locationClause') usedVars.locationClause = vars.locationClause;
+      else if (v === 'serviceClause') usedVars.serviceClause = vars.serviceClause;
+      else if (v === 'problemDescription') usedVars.problemDescription = vars.problemDescription;
     }
 
     return {
