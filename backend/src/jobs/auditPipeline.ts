@@ -6,6 +6,67 @@ import { queryAllModels } from '../services/aiQueryService';
 import { PLAN_LIMITS } from '../config/constants';
 import { AuditInput, AuditStatus, BrandKnowledgeMap } from '../types';
 
+// ─── BrandKnowledgeMap → legacy shape adapter (required by promptGenerator) ──
+
+function toCompatProfile(p: BrandKnowledgeMap): any {
+  return {
+    ...p,
+    brand: {
+      name: p.brand_name,
+      domain: '',
+      description: p.one_liner,
+      tagline: p.one_liner,
+      category: p.category,
+      subcategories: p.subcategories ?? [],
+      founded_year: p.founding_year ?? '',
+      headquarters: p.location?.city ?? '',
+    },
+    mode: (p.business_type === 'local_business' || p.business_type === 'restaurant') ? 'local' : 'saas',
+    features: {
+      core: p.key_features ?? [],
+      differentiators: p.unique_selling_points ?? [],
+      integrations: p.integrations ?? [],
+      platforms: [],
+    },
+    pricing: {
+      currency: 'USD',
+      model: p.pricing?.model ?? 'unknown',
+      plans: (p.pricing?.plans ?? []).map((pl: any) => ({
+        name: pl.name,
+        price: pl.price,
+        billing_period: 'month',
+        key_limits: pl.highlights ?? [],
+      })),
+      free_trial: false,
+      enterprise: false,
+    },
+    location: {
+      address: p.contact_info?.address ?? '',
+      city: p.location?.city ?? '',
+      region: p.location?.region ?? '',
+      country: p.location?.country ?? '',
+      postal_code: '',
+    },
+    contact: {
+      phone: p.contact_info?.phone ?? '',
+      email: p.contact_info?.email ?? '',
+      opening_hours: {},
+    },
+    services: {
+      primary: p.core_offerings ?? [],
+      secondary: [],
+      specialties: p.signature_items ?? [],
+    },
+    competitors: {
+      direct: p.competitors_from_website ?? [],
+      indirect: p.competitors_likely ?? [],
+      local: p.competitors_from_website ?? [],
+      chains: p.competitors_likely ?? [],
+    },
+    verifiable_facts: p.verifiable_facts ?? [],
+  };
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function setStatus(
@@ -38,6 +99,7 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
     // ── STEP 1: Scrape ──
     await setStatus(auditId, 'scraping');
     const profile: BrandKnowledgeMap = await scrapeBrandProfile(domain);
+    const compatProfile = toCompatProfile(profile);
     await saveResult(auditId, 'brand_profile', profile);
     await supabaseAdmin.from('audits').update({ brand_name: profile.brand_name }).eq('id', auditId);
 
@@ -45,7 +107,7 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
     await setStatus(auditId, 'generating_prompts');
     let prompts: any[] = [];
     try {
-      prompts = await generatePrompts(profile, plan, language, region, keywords, []);
+      prompts = await generatePrompts(compatProfile, plan, language, region, keywords, []);
     } catch (e) {
       logger.error('Prompt generation failed', { auditId, error: e });
       throw e;
