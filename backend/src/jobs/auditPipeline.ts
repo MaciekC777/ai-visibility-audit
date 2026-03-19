@@ -9,11 +9,13 @@ import { checkThirdPartyPresence } from '../services/thirdPartyChecker';
 import { generatePrompts } from '../services/promptGenerator';
 import { queryAllModels } from '../services/aiQueryService';
 import {
+  runUnifiedAnalysis,
+  validateCompetitors,
+  aggregateAnalysis,
   analyzeSourcesCited,
-  runCategoryAnalysis,
-  fuzzyMatch,
 } from '../services/analyzer';
-import { calculateAllScoresV3 } from '../services/scorer';
+import { detectHallucinations } from '../services/hallucinationDetector';
+import { calculateAllScores } from '../services/scorer';
 import { generateRecommendations } from '../services/recommendationGenerator';
 import { generateSummary } from '../services/summaryGenerator';
 import { findCompetitorsViaSearch } from '../services/competitorFinder';
@@ -211,9 +213,7 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
           .eq('domain', domain)
           .eq('language', language);
 
-        const NEW_CATEGORIES = new Set(['services', 'opinions', 'competitors']);
-        const hasNewCategories = (existingPrompts ?? []).some((p: any) => NEW_CATEGORIES.has(p.category));
-        if (existingPrompts && existingPrompts.length >= 8 && hasNewCategories) {
+        if (existingPrompts && existingPrompts.length >= 9) {
           prompts = existingPrompts.map((p: any) => ({
             id: p.id,
             promptCategory: p.category,
@@ -267,101 +267,64 @@ export async function runAuditPipeline(input: AuditInput): Promise<void> {
     await supabaseAdmin.from('audits').update({ models_queried: models }).eq('id', auditId);
     logger.info('Queried models', { auditId, responseCount: responses.length });
 
-    // ── STEP 6: Category analysis ──
+    // ── STEP 6: Unified analysis ──
     await setStatus(auditId, 'analyzing');
 
-    let categoryResult: import('../types').CategoryAnalysisResult = {
-      discovery: [], services: [], opinions: [], competitors: [], anchorList: [],
-    };
-
+    let unifiedAnalyses: any[] = [];
     try {
-      categoryResult = await runCategoryAnalysis(responses, profile);
-      logger.info('Category analysis complete', {
-        auditId,
-        discovery: categoryResult.discovery.length,
-        services: categoryResult.services.length,
-        opinions: categoryResult.opinions.length,
-        competitors: categoryResult.competitors.length,
-        anchorList: categoryResult.anchorList.length,
-      });
+      unifiedAnalyses = await runUnifiedAnalysis(responses, profile, seedCompetitors);
     } catch (e) {
-      logger.error('Category analysis failed', { auditId, error: e });
+      logger.error('Unified analysis failed', { auditId, error: e });
     }
 
-    // Save category extractions
-    await saveResult(auditId, 'category_analysis', categoryResult);
+    // Aggregate competitors from responses
+    const rawCompetitorCounts = new Map<string, number>();
+    for (const a of (unifiedAnalyses ?? [])) {
+      for (const c of (a.competitors_in_response ?? [])) {
+        if (c.name) rawCompetitorCounts.set(c.name, (rawCompetitorCounts.get(c.name) ?? 0) + 1);
+      }
+    }
+    const rawForValidation = [...rawCompetitorCounts.entries()].map(([name, count]) => ({ name, count }));
 
-    // Build competitors from anchor list (backward-compat Competitor[] shape)
-    const competitors: import('../types').Competitor[] = categoryResult.anchorList.map(anchor => ({
-      name: anchor.name,
-      total_mentions: anchor.mention_count,
-      co_mention_rate: categoryResult.competitors.filter(e => e.brand_mentioned && e.competitors.some(c => fuzzyMatch(c.name, anchor.name))).length / Math.max(categoryResult.competitors.length, 1),
-      replacement_rate: categoryResult.competitors.filter(e => e.replacement_suggested && e.competitors.some(c => fuzzyMatch(c.name, anchor.name))).length / Math.max(categoryResult.competitors.length, 1),
-      avg_position: 0,
-      models: [...new Set(categoryResult.competitors.filter(e => e.competitors.some(c => fuzzyMatch(c.name, anchor.name))).map(e => e._model ?? 'unknown'))],
-    }));
+    let validatedCompetitorNames: string[] = seedCompetitors;
+    try {
+      if (rawForValidation.length > 0) {
+        validatedCompetitorNames = await validateCompetitors(rawForValidation, profile);
+      }
+    } catch (e) {
+      logger.warn('Competitor validation failed, using seed list', { auditId, error: e });
+    }
 
-    // Build hallucinations from services extraction (backward-compat VerifiedClaim[] shape)
-    const hallucinations: import('../types').VerifiedClaim[] = categoryResult.services.flatMap(ext =>
-      (ext.hallucinations ?? []).map(h => ({
-        claim_text: h.claim,
-        claim_type: 'feature' as const,
-        verifiable: true,
-        model: ext._model ?? 'unknown',
-        promptId: ext._promptId ?? 'unknown',
-        mapped_fact_id: 'no_match',
-        verdict: 'incorrect' as const,
-        severity: (h.severity === 'critical' ? 'high' : h.severity === 'low' ? 'low' : 'medium') as 'high' | 'medium' | 'low',
-        explanation: h.claim,
-        correction: h.reality,
-      }))
+    const { visibilityAnalysis, sentimentResults, competitors, claims } = aggregateAnalysis(
+      unifiedAnalyses,
+      responses,
+      validatedCompetitorNames,
+      profile.brand_name
     );
-
-    // Build sentiment from opinions extraction (backward-compat SentimentResult[] shape)
-    const sentimentResults: import('../types').SentimentResult[] = categoryResult.opinions.map(ext => ({
-      promptId: ext._promptId ?? 'unknown',
-      model: ext._model ?? 'unknown',
-      overall_sentiment: ext.overall_sentiment,
-      tone: 'unknown' as const,
-      specific_praise: ext.pros,
-      specific_criticism: ext.cons,
-      fabricated_opinions: false,
-      fabricated_opinions_detail: null,
-      recommendation_stance: (['strong_recommend', 'soft_recommend'].includes(ext.recommendation_strength)
-        ? 'recommended' : ext.recommendation_strength === 'neutral' ? 'neutral' : 'discouraged') as 'recommended' | 'neutral' | 'discouraged',
-    }));
-
-    // Build visibility analysis from discovery (backward-compat VisibilityAnalysis shape)
-    const brandFoundCount = categoryResult.discovery.filter(e => e.brand_found).length;
-    const mentionRate = categoryResult.discovery.length > 0 ? brandFoundCount / categoryResult.discovery.length : 0;
-    const allModels = [...new Set(responses.map(r => r.model))];
-    const modelsWithMention = new Set(categoryResult.discovery.filter(e => e.brand_found).map(e => e._model ?? '')).size;
-    const visibilityAnalysis: import('../types').VisibilityAnalysis = {
-      mentionRate,
-      positionScore: categoryResult.discovery.filter(e => e.brand_position).length > 0
-        ? categoryResult.discovery.filter(e => e.brand_position).reduce((s, e) => s + (1 - (e.brand_position! - 1) / Math.max(e.total_mentioned - 1, 1)), 0) / categoryResult.discovery.filter(e => e.brand_position).length
-        : 0,
-      modelCoverage: allModels.length > 0 ? modelsWithMention / allModels.length : 0,
-      categoryBreadth: 1,
-      mentionsByModel: {},
-      mentionsByCategory: { discovery: brandFoundCount },
-      promptMentions: [],
-      allPromptMentions: [],
-    };
-
-    const sourceAnalysis = analyzeSourcesCited(responses, domain);
 
     await saveResult(auditId, 'visibility_analysis', visibilityAnalysis);
     await saveResult(auditId, 'sentiment', sentimentResults);
     await saveResult(auditId, 'competitors', competitors);
-    await saveResult(auditId, 'hallucinations', hallucinations);
+
+    // Source analysis
+    const sourceAnalysis = analyzeSourcesCited(responses, domain);
     await saveResult(auditId, 'source_analysis', sourceAnalysis);
+
+    // Hallucination detection (using pre-extracted claims)
+    let hallucinations: any[] = [];
+    try {
+      hallucinations = await detectHallucinations(responses, compatProfile, language, claims);
+    } catch (e) {
+      logger.error('Hallucination detection failed', { auditId, error: e });
+    }
+    await saveResult(auditId, 'hallucinations', hallucinations);
 
     // ── STEP 7: Scores ──
     await setStatus(auditId, 'scoring');
 
-    const scores = calculateAllScoresV3(
-      categoryResult,
+    const scores = calculateAllScores(
+      unifiedAnalyses,
+      hallucinations,
       PLAN_LIMITS[plan].models,
       profile.brand_name
     );

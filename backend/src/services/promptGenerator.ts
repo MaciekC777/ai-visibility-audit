@@ -97,37 +97,10 @@ function buildLocalContext(profile: any): string {
 
 // ─── Smart LLM-based prompt generation ───────────────────────────────────────
 
-interface GeneratedRawPrompt {
-  category: 'discovery' | 'services' | 'opinions' | 'competitors';
-  prompt: string;
-  persona_context: string;
-}
-
-function validateGeneratedPrompts(
-  prompts: GeneratedRawPrompt[],
-  brandName: string
-): { valid: boolean; errors: string[] } {
-  const errors: string[] = [];
-  const counts: Record<string, number> = { discovery: 0, services: 0, opinions: 0, competitors: 0 };
-  prompts.forEach(p => { if (counts[p.category] !== undefined) counts[p.category]++; });
-
-  for (const [cat, count] of Object.entries(counts)) {
-    if (count !== 2) errors.push(`${cat}: expected 2, got ${count}`);
-  }
-
-  const brandLower = brandName.toLowerCase();
-  prompts.filter(p => p.category === 'discovery').forEach(p => {
-    if (p.prompt.toLowerCase().includes(brandLower)) {
-      errors.push(`Discovery prompt contains brand name: "${p.prompt.slice(0, 80)}"`);
-    }
-  });
-  prompts.filter(p => ['services', 'opinions', 'competitors'].includes(p.category)).forEach(p => {
-    if (!p.prompt.toLowerCase().includes(brandLower)) {
-      errors.push(`${p.category} prompt missing brand name: "${p.prompt.slice(0, 80)}"`);
-    }
-  });
-
-  return { valid: errors.length === 0, errors };
+interface RawSmartPrompt {
+  id: string;
+  category: PromptCategory;
+  text: string;
 }
 
 async function generateSmartPrompts(
@@ -143,67 +116,48 @@ async function generateSmartPrompts(
     ? buildSaaSContext(profile as BrandProfileSaaS)
     : buildLocalContext(profile as BrandProfileLocal);
 
-  const isLocal = profile.mode === 'local' || profile.mode === 'local_business';
-  const locationNote = isLocal && profile.location?.city
-    ? `Location: ${profile.location.city}${profile.location.region ? ', ' + profile.location.region : ''}`
+  const categoryGuide = `- discovery (3 prompts): user asks about the category or problem WITHOUT mentioning ${brandName} — tests organic visibility. E.g. "best ${profile.brand.category} tools", "top solutions for [problem]", "what software helps with [use case]"
+- factual (2 prompts): user asks DIRECTLY about "${brandName}" — tests factual accuracy. E.g. "what is ${brandName}", "what does ${brandName} offer", "who uses ${brandName}"
+- comparative (2 prompts): user compares brands or asks for alternatives — tests competitive positioning. E.g. "${brandName} vs alternatives", "compare ${brandName} with competitors", "is there something better than ${brandName}"
+- evaluation (1 prompt): user seeks opinions or reviews — tests reputation. E.g. "is ${brandName} good", "pros and cons of ${brandName}", "what do people think of ${brandName}"
+- practical (1 prompt): user asks practical questions — tests knowledge depth. E.g. "${brandName} pricing", "${brandName} integrations", "does ${brandName} work with [tool]"
+
+Rules:
+- discovery prompts must NOT mention the brand name — they simulate blind/organic discovery
+- factual, comparative, evaluation, practical prompts MAY mention the brand name
+- NEVER generate prompts asking about opening hours, phone numbers, email, or exact address`;
+
+  const keywordNote = keywords.length > 0
+    ? `\nAlso include 1–2 prompts using these keywords: ${keywords.slice(0, 5).join(', ')}`
     : '';
 
-  const systemPrompt = `You are generating realistic user prompts that people would type into ChatGPT/Claude/Gemini.
-Write ONLY in ${langName}. Return ONLY valid JSON array, no markdown.`;
+  const systemPrompt = `You are generating search prompts that real users type into AI assistants (ChatGPT, Gemini, Claude) when researching businesses or software.
 
-  const userPrompt = `Brand profile:
-${context}
-${locationNote}
-Language: ${langName}
+Rules:
+- Write ONLY in ${langName} — every single prompt must be in ${langName}
+- Prompts must sound like genuine, natural user queries — conversational, not marketing copy
+- Use specific details from the brand context (cuisine type, city, specific features, price ranges, specialties)
+- Brand name "${brandName}" should appear in B, C, and E category prompts only
+- A and D prompts must NOT mention the brand name — they simulate blind discovery
+- NEVER generate prompts asking about opening hours, phone numbers, email, or exact address — AI models cannot reliably answer these and they produce no useful visibility signal
+- Return ONLY a valid JSON array, no markdown`;
 
-Generate exactly 8 prompts — 2 per category. Write them as a real person would type them.
+  const userPrompt = `Brand context:
+${context}${keywordNote}
 
-## CATEGORIES:
+Generate exactly ${count} prompts distributed as follows:
+- 3 discovery prompts
+- 2 factual prompts
+- 2 comparative prompts
+- 1 evaluation prompt
+- 1 practical prompt
 
-### DISCOVERY (2 prompts) — NON-BRANDED
-The user describes a problem or need WITHOUT mentioning the brand name.
-Goal: test if AI mentions the brand organically.
-- MUST NOT contain "${brandName}" anywhere
-- Should describe a situation/problem the brand solves
-- Vary: one broader, one more specific with context
+${categoryGuide}
 
-### SERVICES (2 prompts) — BRANDED
-The user asks directly about what the brand offers/does.
-Goal: test what AI says about the brand's products/services/features.
-- MUST contain "${brandName}"
-- Ask about offerings, capabilities, what's available
-- Vary: one general ("what does X offer"), one specific ("does X have [specific thing]")
+Return JSON array:
+[{ "id": "D1", "category": "discovery", "text": "..." }, ...]
 
-### OPINIONS (2 prompts) — BRANDED
-The user asks about reputation, reviews, quality.
-Goal: test AI's sentiment and perception of the brand.
-- MUST contain "${brandName}"
-- Ask about opinions, reviews, whether it's worth it, pros/cons
-- Vary: one direct ("is X good"), one asking for others' opinions
-
-### COMPETITORS (2 prompts) — BRANDED
-The user asks about alternatives to the brand.
-Goal: get a clean list of real competitors from AI.
-- MUST contain "${brandName}"
-- Ask "what else besides X", "alternatives to X", "similar to X"
-${isLocal ? '- Include location naturally when asking about alternatives' : ''}
-- Vary: one asking for alternatives, one asking for comparison/what else exists
-
-## CRITICAL RULES:
-- Write as a real person — with context, not as SEO keywords
-- Start with situation when natural ("I've been...", "My team...", "I'm looking for...")
-- Vary length: some 1 sentence, some 2-3 sentences
-- Match the language and cultural context of ${langName}
-- NEVER sound like a marketing survey
-
-Return JSON array ONLY:
-[
-  {
-    "category": "discovery" | "services" | "opinions" | "competitors",
-    "prompt": "the actual prompt text",
-    "persona_context": "brief note: who is asking and why"
-  }
-]`;
+Category values must be exactly one of: discovery, factual, comparative, evaluation, practical`;
 
   const res = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
@@ -212,32 +166,28 @@ Return JSON array ONLY:
       { role: 'user', content: userPrompt },
     ],
     max_tokens: 1500,
-    temperature: 0.2,
+    temperature: 0,
     response_format: { type: 'json_object' },
   });
 
   const raw = res.choices[0]?.message?.content ?? '{}';
   const parsed = JSON.parse(raw);
-  const arr: GeneratedRawPrompt[] = Array.isArray(parsed)
+
+  // Handle both { prompts: [...] } and [...] response shapes
+  const arr: RawSmartPrompt[] = Array.isArray(parsed)
     ? parsed
-    : (Array.isArray(parsed.prompts) ? parsed.prompts : Object.values(parsed)[0] as GeneratedRawPrompt[]);
+    : (Array.isArray(parsed.prompts) ? parsed.prompts : Object.values(parsed)[0] as RawSmartPrompt[]);
 
   if (!Array.isArray(arr)) throw new Error('Unexpected shape from smart prompt generator');
 
-  const validation = validateGeneratedPrompts(arr, brandName);
-  if (!validation.valid) {
-    logger.warn('Prompt validation issues', { errors: validation.errors });
-  }
-
   return arr
-    .filter(p => p.category && p.prompt)
-    .slice(0, 8)
-    .map((p, i) => ({
-      id: `${p.category.toUpperCase()[0]}${Math.floor(i / 2) + 1}`,
-      promptCategory: p.category,
-      text: p.prompt.trim(),
-      prompt: p.prompt.trim(),
-      persona: p.persona_context,
+    .filter(p => p.id && p.category && p.text)
+    .slice(0, count)
+    .map(p => ({
+      id: p.id,
+      promptCategory: p.category,  // new-style category name (discovery|factual|comparative|evaluation|practical)
+      text: p.text.trim(),
+      prompt: p.text.trim(),
       language,
     }));
 }
