@@ -221,7 +221,7 @@ Generate exactly ${count} prompts distributed as follows:
 ${categoryGuide}
 
 Return JSON array:
-[{ "id": "D1", "category": "discovery", "text": "..." }, ...]
+[{ "category": "discovery", "text": "..." }, ...]
 
 Category values must be exactly one of: discovery, factual, comparative, evaluation, practical`;
 
@@ -246,16 +246,21 @@ Category values must be exactly one of: discovery, factual, comparative, evaluat
 
   if (!Array.isArray(arr)) throw new Error('Unexpected shape from smart prompt generator');
 
+  const counters: Record<string, number> = {};
   return arr
-    .filter(p => p.id && p.category && p.text)
+    .filter(p => p.category && p.text)
     .slice(0, count)
-    .map(p => ({
-      id: p.id,
-      promptCategory: p.category,  // new-style category name (discovery|factual|comparative|evaluation|practical)
-      text: p.text.trim(),
-      prompt: p.text.trim(),
-      language,
-    }));
+    .map(p => {
+      const cat = p.category ?? 'prompt';
+      counters[cat] = (counters[cat] ?? 0) + 1;
+      return {
+        id: `${cat}_${counters[cat]}`,
+        promptCategory: cat,
+        text: p.text.trim(),
+        prompt: p.text.trim(),
+        language,
+      };
+    });
 }
 
 // ─── Fallback: template-based builders ───────────────────────────────────────
