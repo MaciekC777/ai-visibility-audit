@@ -20,22 +20,81 @@ const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
 // ─── Category localization (used by fallback path) ────────────────────────────
 
-const CATEGORY_TRANSLATIONS: Record<string, Partial<Record<Language, string>>> = {
-  'Restaurant':      { en: 'restaurant',       pl: 'restauracja',          de: 'Restaurant',              fr: 'restaurant',         es: 'restaurante',       pt: 'restaurante' },
-  'Beauty & Salon':  { en: 'beauty salon',      pl: 'salon urody',          de: 'Schönheitssalon',         fr: 'salon de beauté',    es: 'salón de belleza',  pt: 'salão de beleza' },
-  'Fitness':         { en: 'gym',               pl: 'siłownia',             de: 'Fitnessstudio',           fr: 'salle de sport',     es: 'gimnasio',          pt: 'academia' },
-  'Healthcare':      { en: 'medical clinic',    pl: 'przychodnia',          de: 'Arztpraxis',              fr: 'cabinet médical',    es: 'clínica médica',    pt: 'clínica médica' },
-  'Legal Services':  { en: 'law firm',          pl: 'kancelaria prawna',    de: 'Anwaltskanzlei',          fr: 'cabinet juridique',  es: 'despacho jurídico', pt: 'escritório jurídico' },
-  'Home Services':   { en: 'home services',     pl: 'usługi domowe',        de: 'Haushaltsservice',        fr: 'services à domicile',es: 'servicios del hogar',pt: 'serviços domésticos' },
-  'Automotive':      { en: 'auto repair shop',  pl: 'warsztat samochodowy', de: 'Autowerkstatt',           fr: 'garage automobile',  es: 'taller de coches',  pt: 'oficina automóvel' },
-  'Accommodation':   { en: 'accommodation',     pl: 'nocleg',               de: 'Unterkunft',              fr: 'hébergement',        es: 'alojamiento',       pt: 'alojamento' },
-  'Retail':          { en: 'shop',              pl: 'sklep',                de: 'Geschäft',                fr: 'boutique',           es: 'tienda',            pt: 'loja' },
-  'Education':       { en: 'school',            pl: 'szkoła',               de: 'Schule',                  fr: 'école',              es: 'escuela',           pt: 'escola' },
-  'Local Business':  { en: 'local business',    pl: 'firma',                de: 'Unternehmen',             fr: 'entreprise',         es: 'empresa',           pt: 'empresa' },
-};
+// Each entry: [keywords that match (lowercase, partial), translations]
+const CATEGORY_TRANSLATIONS: Array<[string[], Partial<Record<Language, string>>]> = [
+  // ── Local business ─────────────────────────────────────────────────────────
+  [['restaurant', 'dining', 'gastro', 'food', 'bistro', 'bar', 'pub', 'cafe', 'kawiarni', 'restaur'],
+    { en: 'restaurant', pl: 'restauracja', de: 'Restaurant', fr: 'restaurant', es: 'restaurante', pt: 'restaurante' }],
+  [['beauty', 'salon', 'spa', 'nail', 'kosmet'],
+    { en: 'beauty salon', pl: 'salon urody', de: 'Schönheitssalon', fr: 'salon de beauté', es: 'salón de belleza', pt: 'salão de beleza' }],
+  [['hair', 'barber', 'fryzjer'],
+    { en: 'hairdresser', pl: 'fryzjer', de: 'Friseur', fr: 'coiffeur', es: 'peluquería', pt: 'cabeleireiro' }],
+  [['fitness', 'gym', 'sport', 'siłowni', 'trening'],
+    { en: 'gym', pl: 'siłownia', de: 'Fitnessstudio', fr: 'salle de sport', es: 'gimnasio', pt: 'academia' }],
+  [['health', 'clinic', 'medical', 'doctor', 'dental', 'dentist', 'przychodn', 'gabinet'],
+    { en: 'medical clinic', pl: 'gabinet', de: 'Arztpraxis', fr: 'cabinet médical', es: 'clínica médica', pt: 'clínica médica' }],
+  [['legal', 'law', 'attorney', 'lawyer', 'kancelari'],
+    { en: 'law firm', pl: 'kancelaria', de: 'Anwaltskanzlei', fr: 'cabinet juridique', es: 'despacho jurídico', pt: 'escritório jurídico' }],
+  [['accounting', 'bookkeeping', 'tax', 'ksiegow', 'rachunkow'],
+    { en: 'accounting office', pl: 'biuro rachunkowe', de: 'Steuerbüro', fr: 'cabinet comptable', es: 'asesoría contable', pt: 'escritório contábil' }],
+  [['home service', 'cleaning', 'plumb', 'electric', 'repair', 'sprzątani'],
+    { en: 'home services', pl: 'usługi domowe', de: 'Haushaltsservice', fr: 'services à domicile', es: 'servicios del hogar', pt: 'serviços domésticos' }],
+  [['auto', 'car', 'mechanic', 'vehicle', 'warsztat'],
+    { en: 'auto repair shop', pl: 'warsztat samochodowy', de: 'Autowerkstatt', fr: 'garage automobile', es: 'taller de coches', pt: 'oficina automóvel' }],
+  [['hotel', 'accommodation', 'hostel', 'motel', 'lodg', 'nocleg'],
+    { en: 'hotel', pl: 'hotel', de: 'Hotel', fr: 'hôtel', es: 'hotel', pt: 'hotel' }],
+  [['shop', 'store', 'retail', 'sklep'],
+    { en: 'shop', pl: 'sklep', de: 'Geschäft', fr: 'boutique', es: 'tienda', pt: 'loja' }],
+  [['school', 'education', 'course', 'training', 'szkoła', 'kurs'],
+    { en: 'school', pl: 'szkoła', de: 'Schule', fr: 'école', es: 'escuela', pt: 'escola' }],
+  [['real estate', 'nieruchomości', 'property'],
+    { en: 'real estate agency', pl: 'biuro nieruchomości', de: 'Immobilienbüro', fr: 'agence immobilière', es: 'inmobiliaria', pt: 'imobiliária' }],
+  [['construction', 'budowlana', 'builder'],
+    { en: 'construction company', pl: 'firma budowlana', de: 'Bauunternehmen', fr: 'entreprise de construction', es: 'constructora', pt: 'construtora' }],
+  // ── SaaS / software ────────────────────────────────────────────────────────
+  [['crm', 'customer relation'],
+    { en: 'CRM tool', pl: 'narzędzie CRM', de: 'CRM-Tool', fr: 'outil CRM', es: 'herramienta CRM', pt: 'ferramenta CRM' }],
+  [['project manag', 'task manag', 'zarządzanie projekt'],
+    { en: 'project management tool', pl: 'narzędzie do zarządzania projektami', de: 'Projektmanagement-Tool', fr: 'outil de gestion de projet', es: 'herramienta de gestión de proyectos', pt: 'ferramenta de gestão de projetos' }],
+  [['hr ', 'human resource', 'recruit'],
+    { en: 'HR tool', pl: 'narzędzie HR', de: 'HR-Tool', fr: 'outil RH', es: 'herramienta de RRHH', pt: 'ferramenta de RH' }],
+  [['e-commerce', 'ecommerce', 'online store'],
+    { en: 'e-commerce platform', pl: 'platforma e-commerce', de: 'E-Commerce-Plattform', fr: 'plateforme e-commerce', es: 'plataforma de e-commerce', pt: 'plataforma de e-commerce' }],
+  [['marketing automat'],
+    { en: 'marketing automation tool', pl: 'narzędzie do marketing automation', de: 'Marketing-Automation-Tool', fr: 'outil de marketing automation', es: 'herramienta de automatización de marketing', pt: 'ferramenta de automação de marketing' }],
+  [['marketing'],
+    { en: 'marketing tool', pl: 'narzędzie marketingowe', de: 'Marketing-Tool', fr: 'outil marketing', es: 'herramienta de marketing', pt: 'ferramenta de marketing' }],
+  [['analytic', 'reporting', 'dashboard', 'bi '],
+    { en: 'analytics tool', pl: 'narzędzie analityczne', de: 'Analyse-Tool', fr: 'outil analytique', es: 'herramienta de análisis', pt: 'ferramenta de análise' }],
+  [['accounting software', 'invoic', 'faktur', 'księgow'],
+    { en: 'accounting tool', pl: 'narzędzie księgowe', de: 'Buchhaltungssoftware', fr: 'logiciel comptable', es: 'software de contabilidad', pt: 'software de contabilidade' }],
+  [['helpdesk', 'help desk', 'customer support', 'ticketing'],
+    { en: 'helpdesk platform', pl: 'platforma helpdesk', de: 'Helpdesk-Plattform', fr: 'plateforme helpdesk', es: 'plataforma de soporte', pt: 'plataforma de suporte' }],
+  [['design', 'graphic', 'ui ', 'ux '],
+    { en: 'design tool', pl: 'narzędzie do projektowania', de: 'Design-Tool', fr: 'outil de conception', es: 'herramienta de diseño', pt: 'ferramenta de design' }],
+  [['seo', 'search engine'],
+    { en: 'SEO tool', pl: 'narzędzie SEO', de: 'SEO-Tool', fr: 'outil SEO', es: 'herramienta SEO', pt: 'ferramenta SEO' }],
+  [['email', 'newsletter'],
+    { en: 'email marketing platform', pl: 'platforma email marketingu', de: 'E-Mail-Marketing-Plattform', fr: 'plateforme d\'email marketing', es: 'plataforma de email marketing', pt: 'plataforma de email marketing' }],
+  [['security', 'cybersec'],
+    { en: 'security tool', pl: 'narzędzie bezpieczeństwa', de: 'Sicherheits-Tool', fr: 'outil de sécurité', es: 'herramienta de seguridad', pt: 'ferramenta de segurança' }],
+  [['ai ', 'artificial intel', 'machine learn'],
+    { en: 'AI tool', pl: 'narzędzie AI', de: 'KI-Tool', fr: 'outil IA', es: 'herramienta de IA', pt: 'ferramenta de IA' }],
+  [['software', 'saas', 'platform', 'app', 'tool', 'application'],
+    { en: 'tool', pl: 'narzędzie', de: 'Tool', fr: 'outil', es: 'herramienta', pt: 'ferramenta' }],
+  // ── Fallback ──────────────────────────────────────────────────────────────
+  [[''],
+    { en: 'company', pl: 'firma', de: 'Unternehmen', fr: 'entreprise', es: 'empresa', pt: 'empresa' }],
+];
 
-function localizeCategory(englishCategory: string, language: Language): string {
-  return CATEGORY_TRANSLATIONS[englishCategory]?.[language] ?? englishCategory;
+function localizeCategory(rawCategory: string, language: Language): string {
+  const needle = rawCategory.toLowerCase();
+  for (const [keywords, translations] of CATEGORY_TRANSLATIONS) {
+    if (keywords.some(kw => kw && needle.includes(kw))) {
+      return translations[language] ?? translations.en ?? rawCategory;
+    }
+  }
+  return rawCategory;
 }
 
 const LOCAL_USE_CASE: Record<Language, string> = {
@@ -116,10 +175,8 @@ async function generateSmartPrompts(
     ? buildSaaSContext(profile as BrandProfileSaaS)
     : buildLocalContext(profile as BrandProfileLocal);
 
-  // Build a full brand reference: "restauracja Ceska w Krakowie" / "narzędzie Ceska"
-  const localizedCategory = profile.mode !== 'saas'
-    ? localizeCategory(profile.brand.category, language)
-    : profile.brand.category;
+  // Build a full brand reference: "restauracja Ceska w Krakowie" / "narzędzie CRM Ceska"
+  const localizedCategory = localizeCategory(profile.brand.category, language);
   const cityClause = profile.mode !== 'saas' && profile.location?.city
     ? ` w ${profile.location.city}`
     : '';
@@ -210,9 +267,10 @@ function buildSaaSVars(profile: BrandProfileSaaS, language: Language): PromptGen
   const plan1 = profile.pricing.plans[0]?.name ?? 'Pro';
   const featureFallbacks = SAAS_FEATURE_FALLBACKS[language];
 
+  const localizedCatSaaS = localizeCategory(profile.brand.category, language);
   return {
-    brand: `${profile.brand.category} ${profile.brand.name}`,
-    category: profile.brand.category,
+    brand: `${localizedCatSaaS} ${profile.brand.name}`,
+    category: localizedCatSaaS,
     year: new Date().getFullYear().toString(),
     feature_1: feature1,
     competitor_1: competitor1,
