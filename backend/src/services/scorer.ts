@@ -8,6 +8,10 @@ import {
   CompetitiveComponents,
   CompetitorEntry,
   ClaimStats,
+  CategoryAnalysisResult,
+  DiscoveryExtraction,
+  ServicesExtraction,
+  OpinionsExtraction,
 } from '../types';
 import {
   MENTION_WEIGHTS,
@@ -382,6 +386,127 @@ export function calculateAllScores(
     perceptionScore,
     marketRank,
     reputationScore,
+    shareOfVoice,
+    competitiveRank: marketRank,
+    overallScore: compositeScore,
+  };
+}
+
+// ─── v3 Category-based scoring ────────────────────────────────────────────────
+
+export function calculateVisibilityScoreV3(
+  discoveryExtractions: DiscoveryExtraction[],
+): { score: number | null; mention_rate: number; avg_position: number } {
+  if (discoveryExtractions.length === 0) return { score: null, mention_rate: 0, avg_position: 0 };
+
+  const mentionRate = discoveryExtractions.filter(e => e.brand_found).length / discoveryExtractions.length;
+
+  const positions = discoveryExtractions
+    .filter(e => e.brand_position !== null && e.total_mentioned > 0)
+    .map(e => {
+      const pos = e.brand_position!;
+      const total = e.total_mentioned;
+      return 1 - (pos - 1) / Math.max(total - 1, 1);
+    });
+  const avgPosition = positions.length > 0
+    ? positions.reduce((s, v) => s + v, 0) / positions.length
+    : 0;
+
+  const rawScore = (mentionRate * 40) + (avgPosition * 30) + (mentionRate * 20);
+
+  const prior = 50;
+  const n = discoveryExtractions.length;
+  const confidence = n / (n + 4);
+  const dampenedScore = confidence * rawScore + (1 - confidence) * prior;
+
+  return {
+    score: Math.round(Math.min(100, Math.max(0, dampenedScore))),
+    mention_rate: mentionRate,
+    avg_position: avgPosition,
+  };
+}
+
+export function calculateAccuracyScoreV3(
+  servicesExtractions: ServicesExtraction[],
+): { score: number | null; hallucination_count: number; critical_count: number } {
+  const allClaims = servicesExtractions.flatMap(e => e.services_mentioned);
+  const verifiable = allClaims.filter(c => c.accuracy !== 'unverifiable');
+  const allHallucinations = servicesExtractions.flatMap(e => e.hallucinations);
+  const criticalCount = allHallucinations.filter(h => h.severity === 'critical' || h.severity === 'high').length;
+
+  if (verifiable.length < 2) {
+    return { score: null, hallucination_count: allHallucinations.length, critical_count: criticalCount };
+  }
+
+  const correct = verifiable.filter(c => c.accuracy === 'correct').length;
+  const rawScore = (correct / verifiable.length) * 100;
+
+  const prior = 50;
+  const confidence = verifiable.length / (verifiable.length + 4);
+  const score = Math.round(confidence * rawScore + (1 - confidence) * prior);
+
+  return { score, hallucination_count: allHallucinations.length, critical_count: criticalCount };
+}
+
+export function calculateReputationScoreV3(
+  opinionsExtractions: OpinionsExtraction[],
+): { score: number | null; avg_sentiment: number } {
+  if (opinionsExtractions.length === 0) return { score: null, avg_sentiment: 0 };
+
+  const avgSentiment = opinionsExtractions.reduce((s, e) => s + e.sentiment_score, 0) / opinionsExtractions.length;
+  const sentimentNormalized = (avgSentiment + 1) / 2;
+
+  const recMap: Record<string, number> = {
+    strong_recommend: 1.0, soft_recommend: 0.7, neutral: 0.5,
+    soft_discourage: 0.3, strong_discourage: 0.0,
+  };
+  const avgRec = opinionsExtractions.reduce((s, e) => s + (recMap[e.recommendation_strength] ?? 0.5), 0) / opinionsExtractions.length;
+
+  const totalAuthority = opinionsExtractions.reduce((s, e) => s + Math.min(e.authority_signals.length, 3), 0);
+  const authorityNormalized = Math.min(totalAuthority / (opinionsExtractions.length * 3), 1);
+
+  const rawScore = (sentimentNormalized * 40 + avgRec * 30 + authorityNormalized * 30) * 100;
+
+  const prior = 50;
+  const n = opinionsExtractions.length;
+  const confidence = n / (n + 4);
+  const score = Math.round(confidence * rawScore + (1 - confidence) * prior);
+
+  return { score: Math.min(100, Math.max(0, score)), avg_sentiment: avgSentiment };
+}
+
+export function calculateAllScoresV3(
+  categoryResult: CategoryAnalysisResult,
+  allModels: string[],
+  brandName: string,
+): NewAuditScores {
+  const { score: visibilityScore } = calculateVisibilityScoreV3(categoryResult.discovery);
+  const { score: accuracyScoreV3 } = calculateAccuracyScoreV3(categoryResult.services);
+  const { score: reputationScoreV3 } = calculateReputationScoreV3(categoryResult.opinions);
+
+  // Competitive: share of voice based on anchor list vs discovery brand mentions
+  const discoveryMentions = categoryResult.discovery.filter(e => e.brand_found).length;
+  const totalAnchorMentions = categoryResult.anchorList.reduce((s, c) => s + c.mention_count, 0);
+  const totalVoice = discoveryMentions + totalAnchorMentions;
+  const shareOfVoice = totalVoice > 0 ? Math.round((discoveryMentions / totalVoice) * 100) : 0;
+
+  // Market rank
+  const brandDiscoveryCount = discoveryMentions;
+  const competitorCounts = categoryResult.anchorList.map(c => c.mention_count);
+  const marketRank = competitorCounts.filter(count => count > brandDiscoveryCount).length + 1;
+
+  const safeVisibility = visibilityScore ?? 50;
+  const compositeScore = calculateCompositeScore(safeVisibility, accuracyScoreV3, reputationScoreV3, shareOfVoice > 0 ? shareOfVoice : null);
+
+  const perceptionScore = reputationScoreV3 ?? Math.round(safeVisibility * 0.5 + 10);
+
+  return {
+    visibilityScore: safeVisibility,
+    accuracyScore: accuracyScoreV3,
+    compositeScore,
+    perceptionScore,
+    marketRank,
+    reputationScore: reputationScoreV3,
     shareOfVoice,
     competitiveRank: marketRank,
     overallScore: compositeScore,

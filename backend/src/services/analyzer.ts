@@ -668,3 +668,408 @@ export function analyzeSourcesCited(
     total_sources: allSources.length,
   };
 }
+
+// ─── v3 Category-specific extraction ─────────────────────────────────────────
+
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => i === 0 ? j : j === 0 ? i : 0)
+  );
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i-1] === b[j-1]
+        ? dp[i-1][j-1]
+        : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+    }
+  }
+  return dp[m][n];
+}
+
+export function fuzzyMatch(a: string, b: string, threshold: number = 0.85): boolean {
+  const normalize = (s: string) => s.toLowerCase().trim().replace(/[^\w\s]/g, '');
+  const na = normalize(a);
+  const nb = normalize(b);
+  if (na === nb) return true;
+  if (na.includes(nb) || nb.includes(na)) return true;
+  const longer = na.length >= nb.length ? na : nb;
+  if (longer.length === 0) return true;
+  const distance = levenshtein(na, nb);
+  return (1 - distance / longer.length) >= threshold;
+}
+
+async function extractDiscovery(
+  rawResponse: string,
+  brandName: string,
+  prompt: string
+): Promise<import('../types').DiscoveryExtraction> {
+  const systemPrompt = `You are a business extraction engine. Return ONLY valid JSON, no markdown.`;
+  const userPrompt = `Analyze this AI response to a user query about finding businesses/services.
+
+User query: "${prompt}"
+AI response: "${rawResponse.slice(0, 3000)}"
+Brand being audited: "${brandName}"
+
+Extract ALL businesses/brands mentioned. For each:
+- name: exact business name as written
+- position: order of mention (1 = first)
+- location: address or area if mentioned, null if not
+- services: list of services/features mentioned for this business
+- sentiment: tone of the mention (positive/neutral/negative)
+
+CRITICAL: Only extract actual business/brand proper names. NOT generic descriptions, dish names, cuisine types, neighborhoods, or product categories. A business name is a proper noun identifying a specific establishment.
+
+Also determine:
+- brand_found: is "${brandName}" (or obvious variant) in the list?
+- brand_position: its position number if found, null if not
+- total_mentioned: total count of businesses extracted
+
+Return JSON only:
+{
+  "businesses_mentioned": [{"name":"","position":1,"location":null,"services":[],"sentiment":"neutral"}],
+  "brand_found": false,
+  "brand_position": null,
+  "total_mentioned": 0
+}`;
+
+  try {
+    const res = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+      max_tokens: 800,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+    });
+    const parsed = JSON.parse(res.choices[0]?.message?.content ?? '{}');
+    return {
+      businesses_mentioned: parsed.businesses_mentioned ?? [],
+      brand_found: parsed.brand_found ?? false,
+      brand_position: parsed.brand_position ?? null,
+      total_mentioned: parsed.total_mentioned ?? 0,
+    };
+  } catch (e) {
+    logger.error('Discovery extraction failed', { error: e });
+    const brandLower = brandName.toLowerCase();
+    const found = rawResponse.toLowerCase().includes(brandLower);
+    return { businesses_mentioned: [], brand_found: found, brand_position: found ? 1 : null, total_mentioned: 0 };
+  }
+}
+
+async function extractServices(
+  rawResponse: string,
+  brandName: string,
+  brandProfile: BrandKnowledgeMap,
+  prompt: string
+): Promise<import('../types').ServicesExtraction> {
+  const systemPrompt = `You are a brand services extraction engine. Return ONLY valid JSON, no markdown.`;
+
+  const profileSummary = [
+    `Category: ${brandProfile.category}`,
+    brandProfile.core_offerings?.length ? `Core offerings: ${brandProfile.core_offerings.slice(0, 5).join(', ')}` : '',
+    brandProfile.key_features?.length ? `Key features: ${brandProfile.key_features.slice(0, 5).join(', ')}` : '',
+    brandProfile.pricing?.price_range ? `Price range: ${brandProfile.pricing.price_range}` : '',
+    brandProfile.verifiable_facts?.pricing_details?.length
+      ? `Pricing facts: ${brandProfile.verifiable_facts.pricing_details.slice(0, 3).join('; ')}`
+      : '',
+  ].filter(Boolean).join('\n');
+
+  const userPrompt = `Analyze this AI response about a brand's services/offerings.
+
+User query: "${prompt}"
+AI response: "${rawResponse.slice(0, 3000)}"
+
+Brand profile (verified facts):
+Name: ${brandName}
+${profileSummary}
+
+Extract:
+1. services_mentioned: Each service/product/feature the AI mentioned for this brand.
+   Compare against brand profile: "correct"=matches verified info, "incorrect"=contradicts it (hallucination), "unverifiable"=not in profile.
+   Include source_claim (exact quote from AI).
+
+2. pricing_mentioned: Did AI mention pricing? Is it correct per profile?
+
+3. overall_completeness: "comprehensive"|"partial"|"minimal"
+
+4. hallucinations: ONLY claims that are INCORRECT per brand profile.
+   Severity: "critical"=wrong price/address/closed (causes lost customers), "high"=wrong core service/feature, "medium"=minor error, "low"=vague/imprecise.
+
+Return JSON only:
+{
+  "services_mentioned": [{"service":"","description":"","accuracy":"correct","source_claim":""}],
+  "pricing_mentioned": {"mentioned":false,"details":null,"accuracy":"unverifiable"},
+  "overall_completeness": "partial",
+  "hallucinations": [{"claim":"","reality":"","severity":"medium"}]
+}`;
+
+  try {
+    const res = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+      max_tokens: 1000,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+    });
+    const parsed = JSON.parse(res.choices[0]?.message?.content ?? '{}');
+    return {
+      services_mentioned: parsed.services_mentioned ?? [],
+      pricing_mentioned: parsed.pricing_mentioned ?? { mentioned: false, details: null, accuracy: 'unverifiable' },
+      overall_completeness: parsed.overall_completeness ?? 'minimal',
+      hallucinations: parsed.hallucinations ?? [],
+    };
+  } catch (e) {
+    logger.error('Services extraction failed', { error: e });
+    return { services_mentioned: [], pricing_mentioned: { mentioned: false, details: null, accuracy: 'unverifiable' }, overall_completeness: 'minimal', hallucinations: [] };
+  }
+}
+
+async function extractOpinions(
+  rawResponse: string,
+  brandName: string,
+  prompt: string
+): Promise<import('../types').OpinionsExtraction> {
+  const systemPrompt = `You are a sentiment extraction engine. Return ONLY valid JSON, no markdown.`;
+  const userPrompt = `Analyze this AI response about opinions/reviews of a brand.
+
+User query: "${prompt}"
+AI response: "${rawResponse.slice(0, 3000)}"
+Brand: "${brandName}"
+
+Extract:
+1. overall_sentiment: positive/neutral/negative/mixed
+2. sentiment_score: -1.0 (very negative) to 1.0 (very positive)
+3. pros: list of positive aspects mentioned
+4. cons: list of negative aspects mentioned
+5. recommendation_strength: strong_recommend|soft_recommend|neutral|soft_discourage|strong_discourage
+6. authority_signals: words/phrases signaling authority (e.g., "leading", "popular", "trusted", "established")
+7. sources_cited: any review sources AI references
+8. key_quote: the single most impactful sentence about the brand's reputation (or null)
+
+Return JSON only:
+{
+  "overall_sentiment": "neutral",
+  "sentiment_score": 0.0,
+  "pros": [],
+  "cons": [],
+  "recommendation_strength": "neutral",
+  "authority_signals": [],
+  "sources_cited": [],
+  "key_quote": null
+}`;
+
+  try {
+    const res = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+      max_tokens: 700,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+    });
+    const parsed = JSON.parse(res.choices[0]?.message?.content ?? '{}');
+    return {
+      overall_sentiment: parsed.overall_sentiment ?? 'neutral',
+      sentiment_score: typeof parsed.sentiment_score === 'number' ? Math.max(-1, Math.min(1, parsed.sentiment_score)) : 0,
+      pros: parsed.pros ?? [],
+      cons: parsed.cons ?? [],
+      recommendation_strength: parsed.recommendation_strength ?? 'neutral',
+      authority_signals: parsed.authority_signals ?? [],
+      sources_cited: parsed.sources_cited ?? [],
+      key_quote: parsed.key_quote ?? null,
+    };
+  } catch (e) {
+    logger.error('Opinions extraction failed', { error: e });
+    return { overall_sentiment: 'neutral', sentiment_score: 0, pros: [], cons: [], recommendation_strength: 'neutral', authority_signals: [], sources_cited: [], key_quote: null };
+  }
+}
+
+async function extractCompetitorsV3(
+  rawResponse: string,
+  brandName: string,
+  prompt: string
+): Promise<import('../types').CompetitorsExtraction> {
+  const systemPrompt = `You are a competitor extraction engine. Return ONLY valid JSON, no markdown.`;
+  const userPrompt = `Analyze this AI response about alternatives/competitors to a brand.
+
+User query: "${prompt}"
+AI response: "${rawResponse.slice(0, 3000)}"
+Brand being audited: "${brandName}"
+
+Extract ALL competitor brands/businesses mentioned as alternatives.
+For each:
+- name: exact business/brand name (MUST be a real business entity, not a generic category)
+- position: order of mention (1 = first)
+- context: one-sentence summary of how it was described
+- sentiment_vs_brand: preferred|equal|inferior|neutral (how AI positions this vs audited brand)
+
+CRITICAL: Only extract actual business/brand/company names. NOT cuisine types, product categories, generic descriptions, or dish names.
+
+Also:
+- brand_mentioned: does AI mention "${brandName}" in this response?
+- replacement_suggested: does AI suggest switching away from "${brandName}"?
+- total_alternatives: how many distinct competitors mentioned
+
+Return JSON only:
+{
+  "competitors": [{"name":"","position":1,"context":"","sentiment_vs_brand":"neutral"}],
+  "brand_mentioned": false,
+  "replacement_suggested": false,
+  "total_alternatives": 0
+}`;
+
+  try {
+    const res = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+      max_tokens: 800,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+    });
+    const parsed = JSON.parse(res.choices[0]?.message?.content ?? '{}');
+    return {
+      competitors: parsed.competitors ?? [],
+      brand_mentioned: parsed.brand_mentioned ?? false,
+      replacement_suggested: parsed.replacement_suggested ?? false,
+      total_alternatives: parsed.total_alternatives ?? 0,
+    };
+  } catch (e) {
+    logger.error('Competitors extraction failed', { error: e });
+    return { competitors: [], brand_mentioned: false, replacement_suggested: false, total_alternatives: 0 };
+  }
+}
+
+function buildAnchorList(extractions: import('../types').CompetitorsExtraction[]): import('../types').AnchorCompetitor[] {
+  const all = new Map<string, { count: number; contexts: string[]; sentiments: string[] }>();
+  for (const ext of extractions) {
+    for (const comp of ext.competitors) {
+      const key = comp.name.toLowerCase().trim();
+      if (!all.has(key)) all.set(key, { count: 0, contexts: [], sentiments: [] });
+      const entry = all.get(key)!;
+      entry.count++;
+      entry.contexts.push(comp.context);
+      entry.sentiments.push(comp.sentiment_vs_brand);
+    }
+  }
+  return Array.from(all.entries()).map(([name, data]) => ({
+    name: extractions.flatMap(e => e.competitors).find(c => c.name.toLowerCase().trim() === name)?.name ?? name,
+    mention_count: data.count,
+    contexts: data.contexts,
+    sentiments: data.sentiments,
+  }));
+}
+
+export async function runCategoryAnalysis(
+  responses: ModelResponse[],
+  profile: BrandKnowledgeMap,
+): Promise<import('../types').CategoryAnalysisResult> {
+  const brandName = profile.brand_name;
+
+  const byCategory: Record<string, ModelResponse[]> = {
+    discovery: [], services: [], opinions: [], competitors: [],
+  };
+
+  for (const r of responses) {
+    const cat = r.promptCategory?.toLowerCase() ?? '';
+    if (byCategory[cat]) byCategory[cat].push(r);
+    else {
+      // Fallback category mapping for old-style categories
+      if (cat.includes('discovery') || cat.includes('A_discovery')) byCategory.discovery.push(r);
+      else if (cat.includes('factual') || cat.includes('B_factual') || cat.includes('practical')) byCategory.services.push(r);
+      else if (cat.includes('evaluation') || cat.includes('E_evaluation') || cat.includes('comparative') || cat.includes('C_comparison')) byCategory.opinions.push(r);
+      else byCategory.discovery.push(r);
+    }
+  }
+
+  // STEP A: Process competitors first → build anchor list
+  const competitorExtractions: import('../types').CompetitorsExtraction[] = [];
+  const BATCH = 5;
+
+  for (let i = 0; i < byCategory.competitors.length; i += BATCH) {
+    const batch = byCategory.competitors.slice(i, i + BATCH);
+    const results = await Promise.all(
+      batch.map(async r => {
+        if (!r.response || r.refused || r.explicit_unknown) {
+          return { competitors: [], brand_mentioned: false, replacement_suggested: false, total_alternatives: 0, _model: r.model, _promptId: r.promptId };
+        }
+        const ext = await extractCompetitorsV3(r.response, brandName, r.promptText);
+        return { ...ext, _model: r.model, _promptId: r.promptId };
+      })
+    );
+    competitorExtractions.push(...results);
+  }
+
+  const anchorList = buildAnchorList(competitorExtractions);
+
+  // STEP B: Process discovery
+  const discoveryExtractions: import('../types').DiscoveryExtraction[] = [];
+  for (let i = 0; i < byCategory.discovery.length; i += BATCH) {
+    const batch = byCategory.discovery.slice(i, i + BATCH);
+    const results = await Promise.all(
+      batch.map(async r => {
+        if (!r.response || r.refused || r.explicit_unknown) {
+          return { businesses_mentioned: [], brand_found: false, brand_position: null, total_mentioned: 0, _model: r.model, _promptId: r.promptId, _rawResponse: '' };
+        }
+        const ext = await extractDiscovery(r.response, brandName, r.promptText);
+        return { ...ext, _model: r.model, _promptId: r.promptId, _rawResponse: r.response };
+      })
+    );
+
+    // STEP C: Validate discovery against anchor list
+    for (const ext of results) {
+      ext.businesses_mentioned = ext.businesses_mentioned.filter(biz => {
+        const isOnAnchorList = anchorList.some(anchor => fuzzyMatch(anchor.name, biz.name, 0.85));
+        const isAuditedBrand = fuzzyMatch(brandName, biz.name, 0.85);
+        const existsInRaw = ext._rawResponse
+          ? ext._rawResponse.toLowerCase().includes(biz.name.toLowerCase())
+          : false;
+        return (isOnAnchorList || isAuditedBrand) && existsInRaw;
+      });
+      ext.brand_found = ext.businesses_mentioned.some(b => fuzzyMatch(brandName, b.name, 0.85));
+      ext.brand_position = ext.brand_found
+        ? (ext.businesses_mentioned.findIndex(b => fuzzyMatch(brandName, b.name, 0.85)) + 1)
+        : null;
+      ext.total_mentioned = ext.businesses_mentioned.length;
+    }
+
+    discoveryExtractions.push(...results);
+  }
+
+  // STEP D: Process services
+  const servicesExtractions: import('../types').ServicesExtraction[] = [];
+  for (let i = 0; i < byCategory.services.length; i += BATCH) {
+    const batch = byCategory.services.slice(i, i + BATCH);
+    const results = await Promise.all(
+      batch.map(async r => {
+        if (!r.response || r.refused || r.explicit_unknown) {
+          return { services_mentioned: [], pricing_mentioned: { mentioned: false, details: null, accuracy: 'unverifiable' as const }, overall_completeness: 'minimal' as const, hallucinations: [], _model: r.model, _promptId: r.promptId };
+        }
+        const ext = await extractServices(r.response, brandName, profile, r.promptText);
+        return { ...ext, _model: r.model, _promptId: r.promptId };
+      })
+    );
+    servicesExtractions.push(...results);
+  }
+
+  // STEP E: Process opinions
+  const opinionsExtractions: import('../types').OpinionsExtraction[] = [];
+  for (let i = 0; i < byCategory.opinions.length; i += BATCH) {
+    const batch = byCategory.opinions.slice(i, i + BATCH);
+    const results = await Promise.all(
+      batch.map(async r => {
+        if (!r.response || r.refused || r.explicit_unknown) {
+          return { overall_sentiment: 'neutral' as const, sentiment_score: 0, pros: [], cons: [], recommendation_strength: 'neutral' as const, authority_signals: [], sources_cited: [], key_quote: null, _model: r.model, _promptId: r.promptId };
+        }
+        const ext = await extractOpinions(r.response, brandName, r.promptText);
+        return { ...ext, _model: r.model, _promptId: r.promptId };
+      })
+    );
+    opinionsExtractions.push(...results);
+  }
+
+  return {
+    discovery: discoveryExtractions,
+    services: servicesExtractions,
+    opinions: opinionsExtractions,
+    competitors: competitorExtractions,
+    anchorList,
+  };
+}

@@ -4,22 +4,22 @@ export const PLAN_LIMITS: Record<PlanType, PlanLimits> = {
   free: {
     auditsPerMonth: 1,
     models: ['openai'],
-    promptsPerAudit: 9,
+    promptsPerAudit: 8,
   },
   starter: {
     auditsPerMonth: 5,
     models: ['openai', 'anthropic', 'gemini'],
-    promptsPerAudit: 9,
+    promptsPerAudit: 8,
   },
   pro: {
     auditsPerMonth: 20,
     models: ['openai', 'anthropic', 'gemini', 'perplexity'],
-    promptsPerAudit: 9,
+    promptsPerAudit: 8,
   },
   agency: {
     auditsPerMonth: Infinity,
     models: ['openai', 'anthropic', 'gemini', 'perplexity'],
-    promptsPerAudit: 9,
+    promptsPerAudit: 8,
   },
 };
 
@@ -145,9 +145,9 @@ export const MENTION_WEIGHTS: Record<string, number> = {
   strong_recommend: 1.0,
 };
 
-// New 9-prompt distribution
+// 8-prompt distribution
 export const PROMPT_DISTRIBUTION = {
-  discovery:   3,  // organic category queries — no brand name
+  discovery:   2,  // organic category queries — no brand name
   factual:     2,  // direct brand questions
   comparative: 2,  // brand vs alternatives
   evaluation:  1,  // opinions / pros-cons
