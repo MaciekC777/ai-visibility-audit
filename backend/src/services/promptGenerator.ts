@@ -116,15 +116,24 @@ async function generateSmartPrompts(
     ? buildSaaSContext(profile as BrandProfileSaaS)
     : buildLocalContext(profile as BrandProfileLocal);
 
+  // Build a full brand reference: "restauracja Ceska w Krakowie" / "narzędzie Ceska"
+  const localizedCategory = profile.mode !== 'saas'
+    ? localizeCategory(profile.brand.category, language)
+    : profile.brand.category;
+  const cityClause = profile.mode !== 'saas' && profile.location?.city
+    ? ` w ${profile.location.city}`
+    : '';
+  const brandRef = `${localizedCategory} ${brandName}${cityClause}`;
+
   const categoryGuide = `- discovery (3 prompts): user asks about the category or problem WITHOUT mentioning ${brandName} — tests organic visibility. E.g. "best ${profile.brand.category} tools", "top solutions for [problem]", "what software helps with [use case]"
-- factual (2 prompts): user asks DIRECTLY about "${brandName}" — tests factual accuracy. E.g. "what is ${brandName}", "what does ${brandName} offer", "who uses ${brandName}"
-- comparative (2 prompts): user compares brands or asks for alternatives — tests competitive positioning. E.g. "${brandName} vs alternatives", "compare ${brandName} with competitors", "is there something better than ${brandName}"
-- evaluation (1 prompt): user seeks opinions or reviews — tests reputation. E.g. "is ${brandName} good", "pros and cons of ${brandName}", "what do people think of ${brandName}"
-- practical (1 prompt): user asks practical questions — tests knowledge depth. E.g. "${brandName} pricing", "${brandName} integrations", "does ${brandName} work with [tool]"
+- factual (2 prompts): user asks DIRECTLY about "${brandRef}" — tests factual accuracy. E.g. "what is ${brandRef}", "what does ${brandRef} offer", "who uses ${brandRef}"
+- comparative (2 prompts): user compares brands or asks for alternatives — tests competitive positioning. E.g. "${brandRef} vs alternatives", "compare ${brandRef} with competitors", "is there something better than ${brandRef}"
+- evaluation (1 prompt): user seeks opinions or reviews — tests reputation. E.g. "is ${brandRef} good", "pros and cons of ${brandRef}", "what do people think of ${brandRef}"
+- practical (1 prompt): user asks practical questions — tests knowledge depth. E.g. "${brandRef} pricing", "${brandRef} integrations", "does ${brandRef} work with [tool]"
 
 Rules:
 - discovery prompts must NOT mention the brand name — they simulate blind/organic discovery
-- factual, comparative, evaluation, practical prompts MAY mention the brand name
+- factual, comparative, evaluation, practical prompts MUST use the full reference "${brandRef}" (not just "${brandName}")
 - NEVER generate prompts asking about opening hours, phone numbers, email, or exact address`;
 
   const keywordNote = keywords.length > 0
@@ -137,8 +146,8 @@ Rules:
 - Write ONLY in ${langName} — every single prompt must be in ${langName}
 - Prompts must sound like genuine, natural user queries — conversational, not marketing copy
 - Use specific details from the brand context (cuisine type, city, specific features, price ranges, specialties)
-- Brand name "${brandName}" should appear in B, C, and E category prompts only
-- A and D prompts must NOT mention the brand name — they simulate blind discovery
+- When referring to the brand directly, ALWAYS use the full reference "${brandRef}" — never just "${brandName}" alone
+- discovery prompts must NOT mention the brand name at all — they simulate blind discovery
 - NEVER generate prompts asking about opening hours, phone numbers, email, or exact address — AI models cannot reliably answer these and they produce no useful visibility signal
 - Return ONLY a valid JSON array, no markdown`;
 
@@ -202,7 +211,7 @@ function buildSaaSVars(profile: BrandProfileSaaS, language: Language): PromptGen
   const featureFallbacks = SAAS_FEATURE_FALLBACKS[language];
 
   return {
-    brand: profile.brand.name,
+    brand: `${profile.brand.category} ${profile.brand.name}`,
     category: profile.brand.category,
     year: new Date().getFullYear().toString(),
     feature_1: feature1,
@@ -229,9 +238,11 @@ function buildLocalVars(profile: any, language: Language): PromptGenVars {
   const sampleService = profile.pricing?.sample_prices?.[0]?.item ?? service1;
   const city = profile.location.city || profile.market?.service_area || '';
 
+  const localizedCat = localizeCategory(profile.brand.category, language);
+  const cityClause = city ? ` w ${city}` : '';
   return {
-    brand: profile.brand.name,
-    category: localizeCategory(profile.brand.category, language),
+    brand: `${localizedCat} ${profile.brand.name}${cityClause}`,
+    category: localizedCat,
     year: new Date().getFullYear().toString(),
     competitor_1: competitor1,
     competitor_2: competitor2,
