@@ -4,22 +4,22 @@ export const PLAN_LIMITS: Record<PlanType, PlanLimits> = {
   free: {
     auditsPerMonth: 1,
     models: ['openai'],
-    promptsPerAudit: 9,
+    promptsPerAudit: 8,
   },
   starter: {
     auditsPerMonth: 5,
     models: ['openai', 'anthropic', 'gemini'],
-    promptsPerAudit: 9,
+    promptsPerAudit: 8,
   },
   pro: {
     auditsPerMonth: 20,
     models: ['openai', 'anthropic', 'gemini', 'perplexity'],
-    promptsPerAudit: 9,
+    promptsPerAudit: 8,
   },
   agency: {
     auditsPerMonth: Infinity,
     models: ['openai', 'anthropic', 'gemini', 'perplexity'],
-    promptsPerAudit: 9,
+    promptsPerAudit: 8,
   },
 };
 
