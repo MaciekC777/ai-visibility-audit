@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { ModelResponse } from '@/types';
 import { Badge } from '@/components/ui/Badge';
 import { getT } from '@/lib/reportTranslations';
@@ -18,32 +19,93 @@ const MODEL_COLORS: Record<string, string> = {
   perplexity: 'purple',
 };
 
-function highlight(text: string, brandName?: string) {
+/** Wrap brand name occurrences in <mark> — works on plain-text nodes only */
+function highlightBrand(text: string, brandName?: string): string {
   if (!brandName) return text;
-  const regex = new RegExp(`(${brandName})`, 'gi');
-  return text.replace(regex, '<mark class="bg-yellow-100 text-yellow-900 rounded px-0.5">$1</mark>');
+  const escaped = brandName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return text.replace(
+    new RegExp(`(${escaped})`, 'gi'),
+    '<mark class="bg-yellow-100 text-yellow-900 rounded px-0.5">$1</mark>',
+  );
 }
+
+function MarkdownResponse({ text, brandName }: { text: string; brandName?: string }) {
+  return (
+    <ReactMarkdown
+      components={{
+        // Paragraphs
+        p: ({ children }) => <p className="mb-3 last:mb-0 text-sm text-gray-700 leading-relaxed">{children}</p>,
+        // Headings
+        h1: ({ children }) => <h1 className="text-base font-bold text-gray-900 mt-4 mb-1">{children}</h1>,
+        h2: ({ children }) => <h2 className="text-sm font-bold text-gray-900 mt-4 mb-1">{children}</h2>,
+        h3: ({ children }) => <h3 className="text-sm font-semibold text-gray-800 mt-3 mb-1">{children}</h3>,
+        // Lists
+        ul: ({ children }) => <ul className="list-disc list-outside pl-5 mb-3 space-y-0.5 text-sm text-gray-700">{children}</ul>,
+        ol: ({ children }) => <ol className="list-decimal list-outside pl-5 mb-3 space-y-0.5 text-sm text-gray-700">{children}</ol>,
+        li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+        // Inline
+        strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
+        em: ({ children }) => <em className="italic">{children}</em>,
+        // Code
+        code: ({ children, className }) => {
+          const isBlock = className?.includes('language-');
+          if (isBlock) {
+            return (
+              <pre className="bg-gray-50 border border-gray-200 rounded-lg p-3 overflow-x-auto my-3">
+                <code className="text-xs font-mono text-gray-800">{children}</code>
+              </pre>
+            );
+          }
+          return <code className="bg-gray-100 text-gray-800 text-xs font-mono px-1.5 py-0.5 rounded">{children}</code>;
+        },
+        // Blockquote
+        blockquote: ({ children }) => (
+          <blockquote className="border-l-2 border-gray-300 pl-3 my-2 text-gray-500 italic">{children}</blockquote>
+        ),
+        // Horizontal rule
+        hr: () => <hr className="my-4 border-gray-200" />,
+        // Links — render as plain text, don't create clickable links in reports
+        a: ({ children }) => <span className="text-blue-600 underline">{children}</span>,
+        // Text node: inject brand highlight
+        text: ({ children }: any) => {
+          if (!brandName || typeof children !== 'string') return children;
+          const highlighted = highlightBrand(children, brandName);
+          if (highlighted === children) return <>{children}</>;
+          return <span dangerouslySetInnerHTML={{ __html: highlighted }} />;
+        },
+      }}
+    >
+      {text}
+    </ReactMarkdown>
+  );
+}
+
+const COLLAPSE_LINES = 8;
 
 function ResponseRow({ r, brandName, t }: { r: ModelResponse; brandName?: string; t: ReturnType<typeof getT> }) {
   const [expanded, setExpanded] = useState(false);
-  const isLong = r.response && r.response.length > 300;
+  const lineCount = r.response ? r.response.split('\n').length : 0;
+  const isLong = r.response && (r.response.length > 600 || lineCount > COLLAPSE_LINES);
 
   return (
     <div className="p-4">
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex items-center gap-2 mb-3">
         <Badge variant={(MODEL_COLORS[r.model] ?? 'default') as any} className="capitalize">
           {r.model}
         </Badge>
-        <span className="text-xs text-gray-400">{r.latency_ms}ms</span>
+        {r.latency_ms > 0 && <span className="text-xs text-gray-400">{r.latency_ms}ms</span>}
         {r.search_enabled && <span className="text-xs text-blue-400">🔍 web search</span>}
-        {r.error && <span className="text-xs text-red-500">Error</span>}
+        {r.error && <span className="text-xs text-red-500">error</span>}
       </div>
+
       {r.response ? (
         <div>
-          <p
-            className={`text-sm text-gray-700 leading-relaxed ${expanded ? '' : 'line-clamp-4'}`}
-            dangerouslySetInnerHTML={{ __html: highlight(r.response, brandName) }}
-          />
+          <div className={`text-sm ${isLong && !expanded ? 'max-h-52 overflow-hidden relative' : ''}`}>
+            {isLong && !expanded && (
+              <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-white to-transparent pointer-events-none" />
+            )}
+            <MarkdownResponse text={r.response} brandName={brandName} />
+          </div>
           {isLong && (
             <button
               onClick={() => setExpanded(!expanded)}
