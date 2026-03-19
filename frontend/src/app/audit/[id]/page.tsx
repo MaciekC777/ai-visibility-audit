@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAudit } from '@/hooks/useAudit';
 import { Sidebar } from '@/components/layout/Sidebar';
+import { BrandProfileCard } from '@/components/report/BrandProfileCard';
 import { PromptResultsSection } from '@/components/report/PromptResultsSection';
 import { Button } from '@/components/ui/Button';
 import { formatDate } from '@/lib/utils';
@@ -68,11 +69,14 @@ export default function AuditReportPage() {
           </Link>
         </div>
 
-        <PromptResultsSection
-          promptResults={promptResults}
-          brandName={getBrandName(brandProfile)}
-          language={lang}
-        />
+        <div className="space-y-8">
+          <BrandProfileCard brandProfile={brandProfile} />
+          <PromptResultsSection
+            promptResults={promptResults}
+            brandName={getBrandName(brandProfile)}
+            language={lang}
+          />
+        </div>
 
       </main>
     </div>
