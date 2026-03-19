@@ -46,14 +46,5 @@ function buildReport(audit: Audit, results: AuditResult[]): AuditReport {
     audit,
     brandProfile: get('brand_profile') as AuditReport['brandProfile'],
     promptResults: get('prompt_results') as AuditReport['promptResults'],
-    hallucinations: get('hallucinations') as AuditReport['hallucinations'],
-    competitors: get('competitors') as AuditReport['competitors'],
-    sentiment: get('sentiment') as AuditReport['sentiment'],
-    recommendations: get('recommendations') as AuditReport['recommendations'],
-    websiteReadiness: get('website_readiness') as AuditReport['websiteReadiness'],
-    thirdParty: get('third_party') as AuditReport['thirdParty'],
-    visibilityAnalysis: get('visibility_analysis') as AuditReport['visibilityAnalysis'],
-    summary: get('summary') as AuditReport['summary'],
-    competitorSearch: get('competitor_search') as AuditReport['competitorSearch'],
   };
 }
